@@ -1,4 +1,5 @@
-# asenatest
+# Asena example
+In this project we create a simple crud appliaction for showing how to use asena for your project.
 
 To install dependencies:
 
