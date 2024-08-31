@@ -1,7 +1,7 @@
 import { Component } from 'asena/src/index.ts';
 import { users } from '../entitiy/User.ts';
 
-@Component({name: "UserRepo"})
+@Component({ name: 'UserRepo' })
 export class UserRepository {
 
   public getUserByName(name: string) {

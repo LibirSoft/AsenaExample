@@ -1,21 +1,23 @@
 import { Controller, Delete, Get, Inject, Post, Put } from 'asena/src';
-import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http/HttpStatus';
+import { TopMiddleware } from '../middleWare/TopMiddleware.ts';
 import type { Context } from 'hono';
-import { UserService } from '../core/service/UserService.ts';
+import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http/HttpStatus';
 import type { User } from '../core/entitiy/User.ts';
+import { UserService } from '../core/service/UserService.ts';
+import { TestMiddleware } from '../middleWare/TestMiddleware.ts';
 
-@Controller('api/v1/user')
-export class UserController {
+@Controller({ path: 'api/v2/user', middlewares: [TopMiddleware], name: 'UserControllerV2' })
+export class UserControllerV2 {
 
   @Inject(UserService)
   private userService: UserService;
 
-  @Get('/')
+  @Get({ path: '/', description: 'Get all users', middlewares: [TestMiddleware] })
   public getUsers(context: Context) {
     return context.json({ users: this.userService.getUsers() }, SuccessStatusCode.OK);
   }
 
-  @Get('/:name')
+  @Get({ path: '/:name', description: 'Get user by name', middlewares: [TestMiddleware] })
   public async getUserByName(context: Context) {
     const { name } = context.req.param();
 
@@ -26,7 +28,7 @@ export class UserController {
     return context.json({ user: this.userService.getUserByName(name) }, SuccessStatusCode.OK);
   }
 
-  @Post('/')
+  @Post({ path: '/', description: 'Add a user', middlewares: [TestMiddleware] })
   public async addUser(context: Context) {
     const user = await context.req.json<User>();
 
@@ -45,7 +47,7 @@ export class UserController {
     return context.json({ message: 'User added' }, SuccessStatusCode.CREATED);
   }
 
-  @Put('/:name')
+  @Put({ path: '/:name', description: 'Update a user', middlewares: [TestMiddleware] })
   public async updateUser(context: Context) {
     const { name } = context.req.param();
     const user = await context.req.json<User>();
@@ -65,7 +67,7 @@ export class UserController {
     return context.json({ message: 'User updated' }, SuccessStatusCode.OK);
   }
 
-  @Delete('/:name')
+  @Delete({ path: '/:name', description: 'Delete a user', middlewares: [TestMiddleware] })
   public async deleteUser(context: Context) {
     const { name } = context.req.param();
 
