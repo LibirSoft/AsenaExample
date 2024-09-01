@@ -1,5 +1,5 @@
 import { Server } from 'asena/src';
-import { logger } from './utils/logger.ts';
+import { logger } from './utils/logger';
 
 const server = new Server().logger(logger).port(3000);
 

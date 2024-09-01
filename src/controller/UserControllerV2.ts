@@ -1,10 +1,11 @@
 import { Controller, Delete, Get, Inject, Post, Put } from 'asena/src';
-import { TopMiddleware } from '../middleWare/TopMiddleware.ts';
+import { TopMiddleware } from '../middleware/TopMiddleware.ts';
 import type { Context } from 'hono';
 import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http/HttpStatus';
-import type { User } from '../core/entitiy/User.ts';
+import type { User } from '../core/entity/User.ts';
 import { UserService } from '../core/service/UserService.ts';
-import { TestMiddleware } from '../middleWare/TestMiddleware.ts';
+import { TestMiddleware } from '../middleware/TestMiddleware.ts';
+import { z } from 'zod';
 
 @Controller({ path: 'api/v2/user', middlewares: [TopMiddleware], name: 'UserControllerV2' })
 export class UserControllerV2 {
@@ -28,8 +29,19 @@ export class UserControllerV2 {
     return context.json({ user: this.userService.getUserByName(name) }, SuccessStatusCode.OK);
   }
 
-  @Post({ path: '/', description: 'Add a user', middlewares: [TestMiddleware] })
-  public async addUser(context: Context) {
+  @Post({
+    path: '/',
+    description: 'Add a user',
+    middlewares: [TestMiddleware],
+    validator: { json: z.object({ name: z.string(), age: z.number() }) },
+  })
+  public async addUser(context: Context<any, any, any>) {
+    console.log('hello');
+
+    const validated = context.req.valid('json');
+
+    console.log(validated);
+
     const user = await context.req.json<User>();
 
     if (!user) {

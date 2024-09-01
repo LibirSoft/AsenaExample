@@ -6,9 +6,10 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "asena": "https://github.com/AsenaJs/Asena",
+    "@hono/zod-validator": "^0.2.2",
     "hono": "^4.5.9",
-    "winston": "^3.14.2"
+    "winston": "^3.14.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.4.0",

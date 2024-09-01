@@ -2,7 +2,7 @@ import { Controller, Delete, Get, Inject, Post, Put } from 'asena/src';
 import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http/HttpStatus';
 import type { Context } from 'hono';
 import { UserService } from '../core/service/UserService.ts';
-import type { User } from '../core/entitiy/User.ts';
+import type { User } from '../core/entity/User.ts';
 
 @Controller('api/v1/user')
 export class UserController {

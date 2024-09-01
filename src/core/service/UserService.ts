@@ -1,7 +1,7 @@
 import { Inject, Service } from 'asena/src';
 import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
-import type { User } from '../entitiy/User.ts';
+import type { User } from '../entity/User.ts';
 
 @Service({ name: 'UserService' })
 export class UserService {

@@ -1,5 +1,5 @@
 import { Component } from 'asena/src/index.ts';
-import { users } from '../entitiy/User.ts';
+import { users } from '../entity/User.ts';
 
 @Component({ name: 'UserRepo' })
 export class UserRepository {
