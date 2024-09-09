@@ -9,6 +9,10 @@ export class UserService {
   @Inject(UserRepository)
   private userRepository: UserRepository;
 
+  public getHello(): string {
+    return 'Hello World! Huuuray!!!';
+  }
+
   public getUsers() {
     logger.info('Getting users from the database');
 

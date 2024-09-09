@@ -6,7 +6,7 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "asena": "https://github.com/AsenaJs/Asena",
+    "asena": "link:asena",
     "hono": "^4.5.9",
     "winston": "^3.14.2"
   },
