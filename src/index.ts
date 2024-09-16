@@ -1,6 +1,5 @@
-import { AsenaServer } from 'asena/src';
+import { AsenaServer } from 'asena';
 import { logger } from './utils/logger.ts';
+import './controller/UserController';
 
-const server = new AsenaServer().logger(logger).port(3000);
-
-await server.start();
+await new AsenaServer().logger(logger).port(3000).start();

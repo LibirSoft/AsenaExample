@@ -1,15 +1,20 @@
-import { Component } from 'asena/src/index.ts';
+import { Component, Inject } from 'asena';
 import { users } from '../entitiy/User.ts';
+import { DatabaseService } from '../../db/DatabaseService.ts';
+import { user } from '../../db/schema/userSchema.ts';
 
 @Component({ name: 'UserRepo' })
 export class UserRepository {
+
+  @Inject(DatabaseService)
+  private db: DatabaseService;
 
   public getUserByName(name: string) {
     return users.find((user) => user.name.includes(name));
   }
 
   public getUsers() {
-    return users;
+    return this.db.connection.select().from(user).execute();
   }
 
   public addUser(user: any) {

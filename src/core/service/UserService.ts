@@ -1,4 +1,4 @@
-import { Inject, Service } from 'asena/src';
+import { Inject, Service } from 'asena';
 import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
 import type { User } from '../entitiy/User.ts';

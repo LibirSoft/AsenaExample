@@ -1,17 +1,20 @@
-import {Controller, Get, Inject} from 'asena/src';
-import type {HonoRequest} from 'hono';
-import {UserService} from '../core/service/UserService.ts';
-import type {AsenaContext} from '../../../Asena/src/adapter/AsenaContext.ts';
+import { Controller, Get, Inject } from 'asena';
+import type { HonoRequest } from 'hono';
+import type { AsenaContext } from 'asena';
+import { UserService } from '../core/service/UserService.ts';
+import { SuccessStatusCode } from 'asena/src/server/web/http';
 
-@Controller("")
+@Controller()
 export class UserController {
 
   @Inject(UserService)
   private userService: UserService;
 
   @Get('/')
-  public getUsers(context: AsenaContext<HonoRequest<any, any>, Response>) {
-    return context.send(this.userService.getHello());
+  public async getUsers(context: AsenaContext<HonoRequest<any, any>, Response>) {
+    const users = await this.userService.getUsers();
+
+    return context.send(users, SuccessStatusCode.OK);
   }
 
 }
