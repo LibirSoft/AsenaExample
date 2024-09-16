@@ -3,7 +3,7 @@ import { users } from '../entitiy/User.ts';
 import { DatabaseService } from '../../db/DatabaseService.ts';
 import { user } from '../../db/schema/userSchema.ts';
 
-@Component({ name: 'UserRepo' })
+@Component()
 export class UserRepository {
 
   @Inject(DatabaseService)

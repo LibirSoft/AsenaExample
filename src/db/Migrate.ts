@@ -17,6 +17,7 @@ export class Migrate {
       port: 5432,
       host: 'localhost',
       max: 1,
+      onnotice: (notice) => logger.info('Database Notice:\n', notice),
     });
 
     await migrate(drizzle(sql), { migrationsFolder: './src/db/drizzle' });

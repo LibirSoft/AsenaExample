@@ -3,7 +3,7 @@ import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
 import type { User } from '../entitiy/User.ts';
 
-@Service({ name: 'UserService' })
+@Service()
 export class UserService {
 
   @Inject(UserRepository)
