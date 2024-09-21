@@ -19,28 +19,10 @@ export class UserService {
     return this.userRepository.getUsers();
   }
 
-  public addUser(user: User) {
+  public async addUser(user: User) {
     logger.info('Adding a user to the database');
 
-    this.userRepository.addUser(user);
-  }
-
-  public getUserByName(name: string) {
-    logger.info('Getting a user from the database');
-
-    return this.userRepository.getUserByName(name);
-  }
-
-  public updateUser(name: string, user: User) {
-    logger.info('Updating a user in the database');
-
-    this.userRepository.updateUser(name, user);
-  }
-
-  public deleteUser(name: string) {
-    logger.info('Deleting a user from the database');
-
-    this.userRepository.deleteUser(name);
+    await this.userRepository.addUser(user);
   }
 
 }

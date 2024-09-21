@@ -15,6 +15,9 @@ export class DatabaseService extends AsenaService {
   protected async onStart() {
     await this.migrate.migrate();
 
+
+
+    // configure the database connection
     this._connection = drizzle(
       postgres({
         database: 'postgres',
