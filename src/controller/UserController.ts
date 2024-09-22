@@ -1,12 +1,13 @@
+import type { AsenaContext } from 'asena';
 import { Controller, Get, Inject, Post } from 'asena';
 import type { HonoRequest } from 'hono';
-import type { AsenaContext } from 'asena';
 import { UserService } from '../core/service/UserService.ts';
 import { SuccessStatusCode } from 'asena/src/server/web/http';
 import type { User } from '../core/entitiy/User.ts';
 import { CreateUserValidator } from '../middleWare/validator/CreateUserValidator.ts';
+import { AuthMiddleware } from '../middleWare/auth/AuthMiddleware.ts';
 
-@Controller()
+@Controller({ path: '/users', name: 'User Controller', middlewares: [AuthMiddleware] })
 export class UserController {
 
   @Inject(UserService)
