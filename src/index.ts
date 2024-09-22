@@ -1,6 +1,4 @@
-import { Server } from 'asena/src';
+import { AsenaServer } from 'asena';
 import { logger } from './utils/logger.ts';
 
-const server = new Server().logger(logger).port(3000);
-
-await server.start();
+await new AsenaServer().logger(logger).port(3000).start();

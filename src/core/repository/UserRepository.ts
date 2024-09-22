@@ -1,31 +1,37 @@
-import { Component } from 'asena/src/index.ts';
-import { users } from '../entitiy/User.ts';
+import { Component, Inject } from 'asena';
+import type { User } from '../entitiy/User.ts';
+import { DatabaseService } from '../../db/DatabaseService.ts';
+import { user } from '../../db/schema/userSchema.ts';
+import { and, eq } from 'drizzle-orm';
 
-@Component({ name: 'UserRepo' })
+@Component()
 export class UserRepository {
 
-  public getUserByName(name: string) {
-    return users.find((user) => user.name.includes(name));
-  }
+  @Inject(DatabaseService)
+  private db: DatabaseService;
 
   public getUsers() {
-    return users;
+    return this.db.connection.select().from(user).execute();
   }
 
-  public addUser(user: any) {
-    users.push(user);
+  public async addUser(userDto: User) {
+    await this.db.connection
+      .insert(user)
+      .values({ ...userDto, isActive: true })
+      .execute();
   }
 
-  public updateUser(name: string, user: any) {
-    const index = users.findIndex((user) => user.name === name);
-
-    users[index] = user;
+  public getUserById(id: number) {
+    return this.db.connection.select().from(user).where(eq(user.id, id)).execute();
   }
 
-  public deleteUser(name: string) {
-    const index = users.findIndex((user) => user.name === name);
-
-    users.splice(index, 1);
+  public getUserByFirstName(firstName: string, password: string) {
+    return this.db.connection
+      .select()
+      .from(user)
+      .where(and(eq(user.firstName, firstName), eq(user.password, password)))
+      .limit(1)
+      .execute();
   }
 
 }

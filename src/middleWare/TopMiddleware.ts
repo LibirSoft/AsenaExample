@@ -1,10 +1,11 @@
-import { Middleware, type MiddlewareService } from 'asena/src';
-import type { Context, Next } from 'hono';
+import { Middleware } from 'asena';
+import type { MiddlewareService } from 'asena';
+import type { AsenaContext } from 'asena';
 
 @Middleware()
-export class TopMiddleware implements MiddlewareService {
+export class TopMiddleware implements MiddlewareService<any, any> {
 
-  public async handle(context: Context, next: Next) {
+  public async handle(context: AsenaContext<any, any>, next: Function) {
     console.log('Hello from Top middleware');
 
     console.log('headers:', context.req.header());
