@@ -1,7 +1,7 @@
 import { Inject, Service } from 'asena';
 import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
-import type { User } from '../entitiy/User.ts';
+import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
 
 @Service()
 export class UserService {
@@ -19,10 +19,16 @@ export class UserService {
     return this.userRepository.getUsers();
   }
 
-  public getUserById(id: number) {
+  public async getUserById(id: number) {
     logger.info('Getting a user from the database by id');
 
-    return this.userRepository.getUserById(id);
+    const users = await this.userRepository.getUserById(id);
+
+    if (users.length > 0) {
+      return users[0];
+    }
+
+    return null;
   }
 
   public async getUserByFirstName(firstName: string, password: string) {
@@ -39,10 +45,10 @@ export class UserService {
     return null;
   }
 
-  public async addUser(user: User) {
-    logger.info('Adding a user to the database');
+  public async createUser(createUserDto: CreteUserDto) {
+    console.log('createUserDto', createUserDto);
 
-    await this.userRepository.addUser(user);
+    await this.userRepository.createUser(createUserDto);
   }
 
 }

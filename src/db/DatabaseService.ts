@@ -10,12 +10,10 @@ export class DatabaseService extends AsenaService {
   @Inject(Migrate)
   private migrate: Migrate;
 
-  private _connection: PostgresJsDatabase<Record<string, never>>;
+  private _connection: PostgresJsDatabase<any>;
 
   protected async onStart() {
     await this.migrate.migrate();
-
-
 
     // configure the database connection
     this._connection = drizzle(
@@ -29,7 +27,7 @@ export class DatabaseService extends AsenaService {
     );
   }
 
-  public get connection(): PostgresJsDatabase<Record<string, never>> {
+  public get connection() {
     return this._connection;
   }
 

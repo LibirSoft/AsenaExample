@@ -21,15 +21,21 @@ export class AuthMiddleware implements MiddlewareService<HonoRequest<any, any>, 
       throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
     }
 
+    let user: any;
+
     try {
       const verified = await Jwt.verify(cookie, Token_secret);
 
-      const user = await this.userService.getUserById(verified['id'] as number);
-
-      context.setValue('user', user);
+      user = await this.userService.getUserById(verified['id'] as number);
     } catch (e) {
       throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
     }
+
+    if (!user) {
+      throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
+    }
+
+    context.setValue('user', { userName: user.userName, id: user.id });
 
     await next();
   }

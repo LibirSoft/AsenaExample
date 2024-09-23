@@ -8,7 +8,7 @@ export class AuthValidator implements DefaultValidationService {
     return zValidator(
       'json',
       z.object({
-        firstname: z.string({ message: 'Username is required' }),
+        userName: z.string({ message: 'Username is required' }),
         password: z.string({ message: 'Password is required' }),
       }),
     );
