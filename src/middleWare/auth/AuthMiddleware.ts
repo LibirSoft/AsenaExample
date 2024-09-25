@@ -26,6 +26,8 @@ export class AuthMiddleware implements MiddlewareService<HonoRequest<any, any>, 
     try {
       const verified = await Jwt.verify(cookie, Token_secret);
 
+      console.log('ver', verified);
+
       user = await this.userService.getUserById(verified['id'] as number);
     } catch (e) {
       throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });

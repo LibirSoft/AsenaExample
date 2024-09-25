@@ -22,19 +22,21 @@ export class AuthController {
   public async login(context: AsenaContext<HonoRequest<any, any>, Response>) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
-    let user: { id: number; firstName: string; lastName: string; password: string; isActive: boolean };
+    let user: User;
+
+    console.log(body);
 
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
     } catch (e) {
-      return context.send('An error occurred', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send({ success: false, message: 'An error occurred' }, ClientErrorStatusCode.BAD_REQUEST);
     }
 
     if (!user) {
-      return context.send('User not found', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send({ success: false, message: 'User not found' }, ClientErrorStatusCode.NOT_FOUND);
     }
 
-    const token = await sign(user, Token_secret);
+    const token = await sign({ ...user }, Token_secret);
 
     await context.setCookie('token', token, { secret: Cookie_secret });
 
@@ -86,6 +88,8 @@ export class AuthController {
   @Get({ path: '/me', middlewares: [AuthMiddleware] })
   public async me(context: AsenaContext<HonoRequest<any, any>, Response>) {
     const user = context.getValue<User>('user');
+
+    console.log(user);
 
     return context.send(user, SuccessStatusCode.OK);
   }

@@ -22,7 +22,7 @@ export class UserService {
   public async getUserById(id: number) {
     logger.info('Getting a user from the database by id');
 
-    const users = await this.userRepository.getUserById(id);
+    const users = this.userRepository.getUserById(id);
 
     if (users.length > 0) {
       return users[0];
@@ -36,7 +36,7 @@ export class UserService {
 
     // TODO: hash password
 
-    const users = await this.userRepository.getUserByFirstName(firstName, password);
+    const users = this.userRepository.getUserByFirstName(firstName, password);
 
     if (users.length > 0) {
       return users[0];
@@ -45,10 +45,10 @@ export class UserService {
     return null;
   }
 
-  public async createUser(createUserDto: CreteUserDto) {
+  public createUser(createUserDto: CreteUserDto) {
     console.log('createUserDto', createUserDto);
 
-    await this.userRepository.createUser(createUserDto);
+    this.userRepository.createUser(createUserDto);
   }
 
 }
