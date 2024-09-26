@@ -1,5 +1,4 @@
-import { type AsenaContext, Controller, Get, Inject, Post } from 'asena';
-import type { HonoRequest } from 'hono';
+import { type Context, Controller, Get, Inject, Post } from 'asena';
 import { UserService } from '../core/service/UserService.ts';
 import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http';
 import { sign } from 'hono/jwt';
@@ -19,7 +18,7 @@ export class AuthController {
   private userService: UserService;
 
   @Post({ path: '/login', validator: AuthValidator })
-  public async login(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async login(context: Context) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
     let user: User;
@@ -43,8 +42,15 @@ export class AuthController {
     return context.send({ success: true, message: 'successfully logged in' }, SuccessStatusCode.OK);
   }
 
+  @Get({ path: '/logout', middlewares: [AuthMiddleware] })
+  public async logout(context: Context) {
+    await context.setCookie('token', '', { secret: Cookie_secret });
+
+    return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.OK);
+  }
+
   @Post({ path: '/signup', validator: CreateUserValidator })
-  public async signup(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async signup(context: Context) {
     const body = await context.getFormData();
 
     const file = body.get('file') as File;
@@ -86,7 +92,7 @@ export class AuthController {
   }
 
   @Get({ path: '/me', middlewares: [AuthMiddleware] })
-  public async me(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async me(context: Context) {
     const user = context.getValue<User>('user');
 
     console.log(user);

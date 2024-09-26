@@ -25,7 +25,7 @@ export class CreateUserValidator implements DefaultValidationService {
           .refine(
             (file) => ACCEPTED_IMAGE_TYPES.includes(file?.type),
             'Only .jpg, .jpeg, .png and .webp formats are supported.',
-          ),
+          ).optional(),
         userName: z.string({ message: 'User name is required' }),
         firstName: z.string({ message: 'First name is required' }),
         lastName: z.string({ message: 'Last name is required' }),
