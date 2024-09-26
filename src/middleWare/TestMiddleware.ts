@@ -1,11 +1,10 @@
-import { Inject, Middleware } from 'asena';
+import type { AsenaContext, MiddlewareService } from '@asenajs/asena';
+import { Inject, Middleware } from '@asenajs/asena';
 import type { HonoRequest, Next } from 'hono';
 import { UserService } from '../core/service/UserService.ts';
-import type { MiddlewareService } from 'asena';
-import type { AsenaContext } from 'asena';
 
 @Middleware()
-export class TestMiddleware implements MiddlewareService<HonoRequest<any, any>, Response> {
+export class TestMiddleware implements MiddlewareService {
 
   @Inject(UserService)
   private userService: UserService;

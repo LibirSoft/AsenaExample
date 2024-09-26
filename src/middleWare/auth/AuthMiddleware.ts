@@ -1,14 +1,14 @@
-import type { AsenaContext, MiddlewareService } from 'asena';
-import { Inject, Middleware } from 'asena';
+import type { AsenaContext, MiddlewareService } from '@asenajs/asena';
+import { Inject, Middleware } from '@asenajs/asena';
 import type { HonoRequest, Next } from 'hono';
 import { UserService } from '../../core/service/UserService.ts';
 import { Cookie_secret, Token_secret } from '../../env.ts';
 import { Jwt } from 'hono/utils/jwt';
 import { HTTPException } from 'hono/http-exception';
-import { ClientErrorStatusCode } from 'asena/src/server/web/http';
+import { ClientErrorStatusCode } from '@asenajs/asena/lib/server/web/http';
 
 @Middleware()
-export class AuthMiddleware implements MiddlewareService<HonoRequest<any, any>, Response> {
+export class AuthMiddleware implements MiddlewareService {
 
   @Inject(UserService)
   private userService: UserService;
@@ -25,6 +25,8 @@ export class AuthMiddleware implements MiddlewareService<HonoRequest<any, any>, 
 
     try {
       const verified = await Jwt.verify(cookie, Token_secret);
+
+      console.log('ver', verified);
 
       user = await this.userService.getUserById(verified['id'] as number);
     } catch (e) {

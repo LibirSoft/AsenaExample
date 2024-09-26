@@ -1,7 +1,6 @@
-import { type AsenaContext, Controller, Get, Inject, Post } from 'asena';
-import type { HonoRequest } from 'hono';
+import { type Context, Controller, Get, Inject, Post } from '@asenajs/asena';
 import { UserService } from '../core/service/UserService.ts';
-import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { sign } from 'hono/jwt';
 import { Cookie_secret, Token_secret } from '../env.ts';
 import { AuthValidator } from '../middleWare/validator/AuthValidator.ts';
@@ -19,30 +18,39 @@ export class AuthController {
   private userService: UserService;
 
   @Post({ path: '/login', validator: AuthValidator })
-  public async login(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async login(context: Context) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
-    let user: { id: number; firstName: string; lastName: string; password: string; isActive: boolean };
+    let user: User;
+
+    console.log(body);
 
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
     } catch (e) {
-      return context.send('An error occurred', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send({ success: false, message: 'An error occurred' }, ClientErrorStatusCode.BAD_REQUEST);
     }
 
     if (!user) {
-      return context.send('User not found', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send({ success: false, message: 'User not found' }, ClientErrorStatusCode.NOT_FOUND);
     }
 
-    const token = await sign(user, Token_secret);
+    const token = await sign({ ...user }, Token_secret);
 
     await context.setCookie('token', token, { secret: Cookie_secret });
 
     return context.send({ success: true, message: 'successfully logged in' }, SuccessStatusCode.OK);
   }
 
+  @Get({ path: '/logout', middlewares: [AuthMiddleware] })
+  public async logout(context: Context) {
+    await context.setCookie('token', '', { secret: Cookie_secret });
+
+    return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.OK);
+  }
+
   @Post({ path: '/signup', validator: CreateUserValidator })
-  public async signup(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async signup(context: Context) {
     const body = await context.getFormData();
 
     const file = body.get('file') as File;
@@ -84,8 +92,10 @@ export class AuthController {
   }
 
   @Get({ path: '/me', middlewares: [AuthMiddleware] })
-  public async me(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async me(context: Context) {
     const user = context.getValue<User>('user');
+
+    console.log(user);
 
     return context.send(user, SuccessStatusCode.OK);
   }
