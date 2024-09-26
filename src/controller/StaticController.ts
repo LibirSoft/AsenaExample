@@ -1,4 +1,4 @@
-import { Controller, Get } from 'asena';
+import { Controller, Get } from '@asenajs/asena';
 import { StaticMiddleware } from '../middleWare/StaticMiddleware.ts';
 
 @Controller('/static')

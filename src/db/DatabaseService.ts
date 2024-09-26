@@ -1,5 +1,5 @@
-import { ServerService } from 'asena';
-import { AsenaService } from 'asena/src/services';
+import { ServerService } from '@asenajs/asena';
+import { AsenaService } from '@asenajs/asena/lib/services';
 import type { User } from '../core/entitiy/User.ts';
 import type { Todo } from '../core/repository/TodoRepository.ts';
 import { logger } from '../utils/logger.ts';

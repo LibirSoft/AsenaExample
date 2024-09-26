@@ -1,6 +1,6 @@
-import { type Context, Controller, Get, Inject, Post } from 'asena';
+import { type Context, Controller, Get, Inject, Post } from '@asenajs/asena';
 import { UserService } from '../core/service/UserService.ts';
-import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { sign } from 'hono/jwt';
 import { Cookie_secret, Token_secret } from '../env.ts';
 import { AuthValidator } from '../middleWare/validator/AuthValidator.ts';

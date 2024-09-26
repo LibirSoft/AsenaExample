@@ -1,6 +1,5 @@
-import { Middleware } from 'asena';
-import type { MiddlewareService } from 'asena';
-import type { AsenaContext } from 'asena';
+import type { AsenaContext, MiddlewareService } from '@asenajs/asena';
+import { Middleware } from '@asenajs/asena';
 
 @Middleware()
 export class TopMiddleware implements MiddlewareService<any, any> {

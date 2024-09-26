@@ -1,11 +1,11 @@
-import { Middleware } from 'asena';
-import type { MiddlewareService } from 'asena';
+import { Middleware } from '@asenajs/asena';
+import type { MiddlewareService } from '@asenajs/asena';
 import { serveStatic } from 'hono/bun';
-import { Override } from 'asena/src/server/components/components.ts';
+import { Override } from '@asenajs/asena/lib/server/components/components.ts';
 
 @Override()
 @Middleware()
-export class StaticMiddleware implements MiddlewareService<any, any> {
+export class StaticMiddleware implements MiddlewareService {
 
   public async handle(context, next) {
     return serveStatic({

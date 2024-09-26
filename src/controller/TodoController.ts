@@ -1,5 +1,5 @@
-import { type Context, Controller, Delete, Get, Inject, Post, Put } from 'asena';
-import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http';
+import { type Context, Controller, Delete, Get, Inject, Post, Put } from '@asenajs/asena';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { AuthMiddleware } from '../middleWare/auth/AuthMiddleware.ts';
 import { TodoService } from '../core/service/TodoService.ts';
 import type { User } from '../core/entitiy/User.ts';

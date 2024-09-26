@@ -1,4 +1,4 @@
-import { Component, Inject } from 'asena';
+import { Component, Inject } from '@asenajs/asena';
 import { DatabaseService } from '../../db/DatabaseService.ts';
 
 export interface Todo {
