@@ -7,8 +7,8 @@
     "generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@asenajs/asena": "^0.1.1",
     "@hono/zod-validator": "^0.2.2",
-    "asena": "https://github.com/AsenaJs/Asena",
     "drizzle-orm": "^0.33.0",
     "hono": "^4.5.9",
     "postgres": "^3.4.4",

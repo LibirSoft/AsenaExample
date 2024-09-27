@@ -1,4 +1,4 @@
-import { Inject, Service } from 'asena';
+import { Inject, Service } from '@asenajs/asena';
 import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
 import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';

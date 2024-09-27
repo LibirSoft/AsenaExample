@@ -1,16 +1,14 @@
-import { Inject, Middleware } from 'asena';
-import type { HonoRequest, Next } from 'hono';
+import { type Context, Inject, Middleware, type MiddlewareService } from '@asenajs/asena';
+import type { Next } from 'hono';
 import { UserService } from '../core/service/UserService.ts';
-import type { MiddlewareService } from 'asena';
-import type { AsenaContext } from 'asena';
 
 @Middleware()
-export class TestMiddleware implements MiddlewareService<HonoRequest<any, any>, Response> {
+export class TestMiddleware implements MiddlewareService {
 
   @Inject(UserService)
   private userService: UserService;
 
-  public async handle(context: AsenaContext<HonoRequest, Response>, next: Next) {
+  public async handle(context: Context, next: Next) {
     context.setValue('test', { name: 'ahmet', surname: 'yılmaz' });
 
     console.log(this.userService.getUsers());

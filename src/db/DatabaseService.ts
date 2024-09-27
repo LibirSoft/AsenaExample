@@ -1,5 +1,5 @@
-import { Inject, ServerService } from 'asena';
-import { AsenaService } from 'asena/src/services';
+import { Inject, ServerService } from '@asenajs/asena';
+import { AsenaService } from '@asenajs/asena/lib/services';
 import { Migrate } from './Migrate.ts';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';

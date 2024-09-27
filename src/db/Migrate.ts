@@ -1,4 +1,4 @@
-import { Service } from '../../../Asena';
+import { Service } from '@asenajs/asena';
 import { logger } from '../utils/logger.ts';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';

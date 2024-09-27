@@ -1,7 +1,5 @@
-import { type AsenaContext, Delete, Post, Put } from 'asena';
-import { Controller, Get, Inject } from 'asena';
-import type { HonoRequest } from 'hono';
-import { ClientErrorStatusCode, SuccessStatusCode } from 'asena/src/server/web/http';
+import { type Context, Controller, Delete, Get, Inject, Post, Put } from '@asenajs/asena';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { AuthMiddleware } from '../middleWare/auth/AuthMiddleware.ts';
 import { TodoService } from '../core/service/TodoService.ts';
 import type { User } from '../core/entitiy/User.ts';
@@ -15,7 +13,7 @@ export class TodoController {
   private todoService: TodoService;
 
   @Get({ path: '/', description: 'Get all todos' })
-  public async getTodos(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async getTodos(context: Context) {
     const user = context.getValue<User>('user');
 
     const todos = await this.todoService.getTodosByUserId(user.id);
@@ -24,7 +22,7 @@ export class TodoController {
   }
 
   @Get({ path: '/:id', description: 'Get a todo by id' })
-  public async getTodo(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async getTodo(context: Context) {
     const id = context.getParam('id');
     const user = context.getValue<User>('user');
 
@@ -40,7 +38,7 @@ export class TodoController {
   }
 
   @Post({ path: '/', validator: CreateTodoValidator, description: 'Create a new todo' })
-  public async create(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async create(context: Context) {
     const body = await context.getBody<CreateTodoDto>();
 
     const user = context.getValue<User>('user');
@@ -55,7 +53,7 @@ export class TodoController {
   }
 
   @Put({ path: '/:id', validator: CreateTodoValidator, description: 'Update a todo by id' })
-  public async update(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async update(context: Context) {
     const id = context.getParam('id');
     const body = await context.getBody<CreateTodoDto>();
 
@@ -71,7 +69,7 @@ export class TodoController {
   }
 
   @Delete({ path: '/:id', description: 'Delete a todo by id' })
-  public async delete(context: AsenaContext<HonoRequest<any, any>, Response>) {
+  public async delete(context: Context) {
     const id = context.getParam('id');
     const user = context.getValue<User>('user');
 

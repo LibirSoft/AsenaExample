@@ -1,4 +1,4 @@
-import { Inject, Service } from 'asena';
+import { Inject, Service } from '@asenajs/asena';
 import { type CreateTodoDto, type Todo, TodoRepository } from '../repository/TodoRepository.ts';
 
 @Service()

@@ -1,8 +1,8 @@
-import type { DefaultValidationService } from 'asena';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import type { ValidationService } from '@asenajs/asena';
 
-export class CreateTodoValidator implements DefaultValidationService {
+export class CreateTodoValidator implements ValidationService {
 
   public json() {
     return zValidator(

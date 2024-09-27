@@ -1,4 +1,4 @@
-import { Component, Inject } from '../../../../Asena';
+import { Component, Inject } from '@asenajs/asena';
 import { DatabaseService } from '../../db/DatabaseService.ts';
 import { todo } from '../../db/schema/todoSchema.ts';
 import { and, eq } from 'drizzle-orm';

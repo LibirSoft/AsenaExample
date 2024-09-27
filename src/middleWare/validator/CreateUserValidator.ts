@@ -1,6 +1,6 @@
-import type { DefaultValidationService } from 'asena';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import type { ValidationService } from '@asenajs/asena';
 
 export interface CreteUserDto {
   userName: string;
@@ -13,7 +13,7 @@ export interface CreteUserDto {
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-export class CreateUserValidator implements DefaultValidationService {
+export class CreateUserValidator implements ValidationService {
 
   public form() {
     return zValidator(
