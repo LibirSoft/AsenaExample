@@ -4,7 +4,7 @@ import { UserService } from '../../core/service/UserService.ts';
 import { Cookie_secret, Token_secret } from '../../env.ts';
 import { Jwt } from 'hono/utils/jwt';
 import { HTTPException } from 'hono/http-exception';
-import { ClientErrorStatusCode } from '@asenajs/asena/lib/server/web/http';
+import { ClientErrorStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
 
 @Middleware()
 export class AuthMiddleware implements MiddlewareService {

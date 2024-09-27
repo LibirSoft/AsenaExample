@@ -1,8 +1,8 @@
 import { Inject, ServerService } from '@asenajs/asena';
-import { AsenaService } from '@asenajs/asena/lib/services';
 import { Migrate } from './Migrate.ts';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { AsenaService } from '@asenajs/asena/dist/lib/services';
 
 @ServerService()
 export class DatabaseService extends AsenaService {
