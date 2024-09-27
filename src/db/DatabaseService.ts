@@ -1,34 +1,25 @@
-import { Inject, ServerService } from '@asenajs/asena';
-import { Migrate } from './Migrate.ts';
-import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { AsenaService } from '@asenajs/asena/dist/lib/services';
+import { ServerService } from '@asenajs/asena';
+import type { User } from '../core/entitiy/User.ts';
+import type { Todo } from '../core/repository/TodoRepository.ts';
+import { logger } from '../utils/logger.ts';
+import {AsenaService} from "@asenajs/asena/dist/lib/services";
+
+export interface FakeDatabase {
+  users: User[];
+  todos: Todo[];
+}
 
 @ServerService()
 export class DatabaseService extends AsenaService {
 
-  @Inject(Migrate)
-  private migrate: Migrate;
-
-  private _connection: PostgresJsDatabase<any>;
+  private db: FakeDatabase = { users: [], todos: [] };
 
   protected async onStart() {
-    await this.migrate.migrate();
-
-    // configure the database connection
-    this._connection = drizzle(
-      postgres({
-        database: 'postgres',
-        password: 'postgres',
-        user: 'postgres',
-        port: 5432,
-        host: 'localhost',
-      }),
-    );
+    logger.info('Database service started');
   }
 
   public get connection() {
-    return this._connection;
+    return this.db;
   }
 
 }

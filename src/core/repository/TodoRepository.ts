@@ -1,7 +1,5 @@
 import { Component, Inject } from '@asenajs/asena';
 import { DatabaseService } from '../../db/DatabaseService.ts';
-import { todo } from '../../db/schema/todoSchema.ts';
-import { and, eq } from 'drizzle-orm';
 
 export interface Todo {
   id: number;
@@ -24,41 +22,51 @@ export class TodoRepository {
   private databaseService: DatabaseService;
 
   public async getTodosByUserId(userId: number) {
-    return this.databaseService.connection.select().from(todo).where(eq(todo.userId, userId)).execute();
+    return this.databaseService.connection.todos.filter((user) => user.id === userId);
   }
 
   public async getTodoByIdAndUserId(id: number, userId: number) {
-    return this.databaseService.connection
-      .select()
-      .from(todo)
-      .where(and(eq(todo.id, id), eq(todo.userId, userId)))
-      .limit(1)
-      .execute();
+    return this.databaseService.connection.todos.filter((todo) => todo.id === id && todo.userId === userId);
   }
 
   public async deleteTodoByIdAndUserId(id: number, userId: number) {
-    return this.databaseService.connection
-      .delete(todo)
-      .where(and(eq(todo.id, id), eq(todo.userId, userId)))
-      .execute();
+    const todo = this.databaseService.connection.todos.find((todo) => todo.id === id && todo.userId === userId);
+
+    if (!todo) {
+      return false;
+    }
+
+    this.databaseService.connection.todos = this.databaseService.connection.todos.filter((todo) => todo.id !== id);
+
+    return true;
   }
 
   public async createTodo(userId: number, createTodoDto: CreateTodoDto) {
-    return this.databaseService.connection
-      .insert(todo)
-      .values({
-        ...createTodoDto,
-        userId,
-      })
-      .execute();
+    const todo: Todo = {
+      id: this.databaseService.connection.todos.length + 1,
+      userId,
+      ...createTodoDto,
+    };
+
+    this.databaseService.connection.todos.push(todo);
+
+    return todo;
   }
 
   public async updateTodoById(todoDto: Todo) {
-    return this.databaseService.connection
-      .update(todo)
-      .set({ ...todoDto })
-      .where(eq(todo.id, todoDto.id))
-      .execute();
+    const todo = this.databaseService.connection.todos.find((todo) => todo.id === todoDto.id);
+
+    if (!todo) {
+      return false;
+    }
+
+    todo.title = todoDto.title;
+
+    todo.description = todoDto.description;
+
+    todo.isCompleted = todoDto.isCompleted;
+
+    return todo;
   }
 
 }

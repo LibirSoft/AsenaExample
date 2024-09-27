@@ -4,7 +4,7 @@ import { TodoService } from '../core/service/TodoService.ts';
 import type { User } from '../core/entitiy/User.ts';
 import type { CreateTodoDto } from '../core/repository/TodoRepository.ts';
 import { CreateTodoValidator } from '../middleWare/validator/CreateTodoValidator.ts';
-import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/types';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
 
 @Controller({ path: '/todos', name: 'Todo Controller', middlewares: [AuthMiddleware] })
 export class TodoController {

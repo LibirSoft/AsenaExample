@@ -1,6 +1,6 @@
+import type { ValidationService } from '@asenajs/asena';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import type { ValidationService } from '@asenajs/asena';
 
 export interface CreteUserDto {
   userName: string;
@@ -25,7 +25,8 @@ export class CreateUserValidator implements ValidationService {
           .refine(
             (file) => ACCEPTED_IMAGE_TYPES.includes(file?.type),
             'Only .jpg, .jpeg, .png and .webp formats are supported.',
-          ),
+          )
+          .optional(),
         userName: z.string({ message: 'User name is required' }),
         firstName: z.string({ message: 'First name is required' }),
         lastName: z.string({ message: 'Last name is required' }),
