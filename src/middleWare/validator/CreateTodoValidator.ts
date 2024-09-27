@@ -1,6 +1,6 @@
-import type { ValidationService } from '@asenajs/asena';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import type { ValidationService } from '@asenajs/asena';
 
 export class CreateTodoValidator implements ValidationService {
 

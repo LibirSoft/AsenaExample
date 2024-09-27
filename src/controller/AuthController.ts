@@ -1,6 +1,5 @@
 import { type Context, Controller, Get, Inject, Post } from '@asenajs/asena';
 import { UserService } from '../core/service/UserService.ts';
-import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { sign } from 'hono/jwt';
 import { Cookie_secret, Token_secret } from '../env.ts';
 import { AuthValidator } from '../middleWare/validator/AuthValidator.ts';
@@ -10,6 +9,7 @@ import type { User } from '../core/entitiy/User.ts';
 import { logger } from '../utils/logger.ts';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/types';
 
 @Controller('/auth')
 export class AuthController {
@@ -21,32 +21,23 @@ export class AuthController {
   public async login(context: Context) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
-    let user: User;
-
-    console.log(body);
+    let user: { id: number; firstName: string; lastName: string; password: string; isActive: boolean };
 
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
     } catch (e) {
-      return context.send({ success: false, message: 'An error occurred' }, ClientErrorStatusCode.BAD_REQUEST);
+      return context.send('An error occurred', ClientErrorStatusCode.BAD_REQUEST);
     }
 
     if (!user) {
-      return context.send({ success: false, message: 'User not found' }, ClientErrorStatusCode.NOT_FOUND);
+      return context.send('User not found', ClientErrorStatusCode.BAD_REQUEST);
     }
 
-    const token = await sign({ ...user }, Token_secret);
+    const token = await sign(user, Token_secret);
 
     await context.setCookie('token', token, { secret: Cookie_secret });
 
     return context.send({ success: true, message: 'successfully logged in' }, SuccessStatusCode.OK);
-  }
-
-  @Get({ path: '/logout', middlewares: [AuthMiddleware] })
-  public async logout(context: Context) {
-    await context.setCookie('token', '', { secret: Cookie_secret });
-
-    return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.OK);
   }
 
   @Post({ path: '/signup', validator: CreateUserValidator })
@@ -94,8 +85,6 @@ export class AuthController {
   @Get({ path: '/me', middlewares: [AuthMiddleware] })
   public async me(context: Context) {
     const user = context.getValue<User>('user');
-
-    console.log(user);
 
     return context.send(user, SuccessStatusCode.OK);
   }

@@ -1,3 +1,3 @@
-import { DefaultLogger } from '@asenajs/asena/lib/services';
+import { DefaultLogger } from '@asenajs/asena/dist/lib/services';
 
 export const logger = new DefaultLogger();
