@@ -1,5 +1,4 @@
-import type { AsenaContext, MiddlewareService } from '@asenajs/asena';
-import { Inject, Middleware } from '@asenajs/asena';
+import { type AsenaContext, Inject, Middleware, type MiddlewareService } from '@asenajs/asena';
 import type { HonoRequest, Next } from 'hono';
 import { UserService } from '../core/service/UserService.ts';
 

@@ -1,6 +1,5 @@
 import { type Context, Controller, Get, Inject, Post } from '@asenajs/asena';
 import { UserService } from '../core/service/UserService.ts';
-import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { sign } from 'hono/jwt';
 import { Cookie_secret, Token_secret } from '../env.ts';
 import { AuthValidator } from '../middleWare/validator/AuthValidator.ts';
@@ -10,6 +9,7 @@ import type { User } from '../core/entitiy/User.ts';
 import { logger } from '../utils/logger.ts';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
 
 @Controller('/auth')
 export class AuthController {

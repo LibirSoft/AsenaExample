@@ -1,10 +1,10 @@
 import { type Context, Controller, Delete, Get, Inject, Post, Put } from '@asenajs/asena';
-import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/lib/server/web/http';
 import { AuthMiddleware } from '../middleWare/auth/AuthMiddleware.ts';
 import { TodoService } from '../core/service/TodoService.ts';
 import type { User } from '../core/entitiy/User.ts';
 import type { CreateTodoDto } from '../core/repository/TodoRepository.ts';
 import { CreateTodoValidator } from '../middleWare/validator/CreateTodoValidator.ts';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
 
 @Controller({ path: '/todos', name: 'Todo Controller', middlewares: [AuthMiddleware] })
 export class TodoController {
