@@ -1,7 +1,5 @@
 import { Component, Inject } from '@asenajs/asena';
 import { DatabaseService } from '../../db/DatabaseService.ts';
-import { user } from '../../db/schema/userSchema.ts';
-import { and, eq } from 'drizzle-orm';
 import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
 
 @Component()
@@ -11,32 +9,22 @@ export class UserRepository {
   private db: DatabaseService;
 
   public getUsers() {
-    return this.db.connection.select().from(user).execute();
+    return this.db.connection.users;
   }
 
   public getUserById(id: number) {
-    return this.db.connection.select().from(user).where(eq(user.id, id)).limit(1).execute();
+    return this.db.connection.users.filter((user) => user.id === id);
   }
 
   public getUserByFirstName(userName: string, password: string) {
-    return this.db.connection
-      .select()
-      .from(user)
-      .where(and(eq(user.userName, userName), eq(user.password, password)))
-      .limit(1)
-      .execute();
+    return this.db.connection.users.filter((user) => user.userName === userName && user.password === password);
   }
 
-  public async createUser(createUserDto: CreteUserDto) {
-    console.log('createUserDto', createUserDto);
-
-    return this.db.connection
-      .insert(user)
-      .values({
-        ...createUserDto,
-        isActive: true,
-      })
-      .execute();
+  public createUser(createUserDto: CreteUserDto) {
+    return this.db.connection.users.push({
+      id: this.db.connection.users.length + 1,
+      ...createUserDto,
+    });
   }
 
 }
