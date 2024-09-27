@@ -23,8 +23,6 @@ export class AuthController {
 
     let user: User;
 
-    console.log(body);
-
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
     } catch (e) {
