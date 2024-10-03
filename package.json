@@ -7,7 +7,7 @@
     "generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@asenajs/asena": "^0.1.5",
+    "@asenajs/asena": "link:@asenajs/asena",
     "@hono/zod-validator": "^0.2.2",
     "hono": "^4.5.9",
     "winston": "^3.14.2",
