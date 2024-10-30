@@ -1,5 +1,5 @@
-import { AsenaWebSocketService, type Socket, WebSocket } from '@asenajs/asena';
 import type { User } from '../core/entitiy/User.ts';
+import { AsenaWebSocketService, type Socket, WebSocket } from '@asenajs/asena';
 
 @WebSocket({ path: 'chat', middlewares: [], name: 'TestWebSocket' })
 export class TestWebSocket extends AsenaWebSocketService<{ user: User }> {

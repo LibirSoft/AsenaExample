@@ -2,10 +2,9 @@ import { Inject, Middleware, type Context, type MiddlewareService } from '@asena
 import { UserService } from '../../core/service/UserService';
 import type { Next } from 'hono';
 import { Cookie_secret, Token_secret } from '../../env';
-import { ClientErrorStatusCode } from '@asenajs/asena/dist/lib/server/types';
 import { HTTPException } from 'hono/http-exception';
-import {Jwt} from "hono/utils/jwt";
-
+import { Jwt } from 'hono/utils/jwt';
+import { ClientErrorStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
 
 @Middleware()
 export class WSAuthMiddleware implements MiddlewareService {
