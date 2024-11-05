@@ -1,7 +1,6 @@
-import { Middleware } from '@asenajs/asena';
+import { Middleware, Override } from '@asenajs/asena';
 import type { MiddlewareService } from '@asenajs/asena';
 import { serveStatic } from 'hono/bun';
-import { Override } from '@asenajs/asena/dist/lib/server/components/components';
 
 @Override()
 @Middleware()

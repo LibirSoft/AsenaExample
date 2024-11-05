@@ -79,7 +79,7 @@ export class AuthController {
     };
 
     try {
-      await this.userService.createUser(createUSerDto);
+      this.userService.createUser(createUSerDto);
     } catch (e) {
       logger.error(e);
 
