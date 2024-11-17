@@ -42,7 +42,7 @@ export class AuthController {
 
   @Get({ path: '/logout', middlewares: [AuthMiddleware] })
   public async logout(context: Context) {
-    await context.setCookie('token', '', { secret: Cookie_secret });
+    await context.deleteCookie('token');
 
     return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.OK);
   }

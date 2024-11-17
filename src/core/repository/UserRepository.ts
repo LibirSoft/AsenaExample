@@ -1,28 +1,28 @@
 import { Component, Inject } from '@asenajs/asena';
-import { DatabaseService } from '../../db/DatabaseService.ts';
+import { DatabaseService, type FakeDatabase } from '../../db/DatabaseService.ts';
 import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
 
 @Component()
 export class UserRepository {
 
-  @Inject(DatabaseService)
-  private db: DatabaseService;
+  @Inject(DatabaseService, (service: DatabaseService) => service.connection)
+  private db: FakeDatabase;
 
   public getUsers() {
-    return this.db.connection.users;
+    return this.db.users;
   }
 
   public getUserById(id: number) {
-    return this.db.connection.users.filter((user) => user.id === id);
+    return this.db.users.filter((user) => user.id === id);
   }
 
   public getUserByFirstName(userName: string, password: string) {
-    return this.db.connection.users.filter((user) => user.userName === userName && user.password === password);
+    return this.db.users.filter((user) => user.userName === userName && user.password === password);
   }
 
   public createUser(createUserDto: CreteUserDto) {
-    return this.db.connection.users.push({
-      id: this.db.connection.users.length + 1,
+    return this.db.users.push({
+      id: this.db.users.length + 1,
       ...createUserDto,
     });
   }
