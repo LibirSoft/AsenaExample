@@ -1,5 +1,5 @@
 import { Component, Inject } from '@asenajs/asena';
-import { DatabaseService } from '../../db/DatabaseService.ts';
+import {DatabaseService, type FakeDatabase} from '../../db/DatabaseService.ts';
 
 export interface Todo {
   id: number;
@@ -18,43 +18,43 @@ export interface CreateTodoDto {
 @Component()
 export class TodoRepository {
 
-  @Inject(DatabaseService)
-  private databaseService: DatabaseService;
+  @Inject(DatabaseService, (service: DatabaseService) => service.connection)
+  private connection: FakeDatabase;
 
   public async getTodosByUserId(userId: number) {
-    return this.databaseService.connection.todos.filter((user) => user.id === userId);
+    return this.connection.todos.filter((user) => user.id === userId);
   }
 
   public async getTodoByIdAndUserId(id: number, userId: number) {
-    return this.databaseService.connection.todos.filter((todo) => todo.id === id && todo.userId === userId);
+    return this.connection.todos.filter((todo) => todo.id === id && todo.userId === userId);
   }
 
   public async deleteTodoByIdAndUserId(id: number, userId: number) {
-    const todo = this.databaseService.connection.todos.find((todo) => todo.id === id && todo.userId === userId);
+    const todo = this.connection.todos.find((todo) => todo.id === id && todo.userId === userId);
 
     if (!todo) {
       return false;
     }
 
-    this.databaseService.connection.todos = this.databaseService.connection.todos.filter((todo) => todo.id !== id);
+    this.connection.todos = this.connection.todos.filter((todo) => todo.id !== id);
 
     return true;
   }
 
   public async createTodo(userId: number, createTodoDto: CreateTodoDto) {
     const todo: Todo = {
-      id: this.databaseService.connection.todos.length + 1,
+      id: this.connection.todos.length + 1,
       userId,
       ...createTodoDto,
     };
 
-    this.databaseService.connection.todos.push(todo);
+    this.connection.todos.push(todo);
 
     return todo;
   }
 
   public async updateTodoById(todoDto: Todo) {
-    const todo = this.databaseService.connection.todos.find((todo) => todo.id === todoDto.id);
+    const todo = this.connection.todos.find((todo) => todo.id === todoDto.id);
 
     if (!todo) {
       return false;

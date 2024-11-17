@@ -3,17 +3,19 @@
   "module": "src/index.ts",
   "type": "module",
   "scripts": {
-    "start": "bun src/index.ts",
+    "build": "asena-cli build",
+    "start": "asena-cli dev start",
     "generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@asenajs/asena": "^0.1.7",
+    "@asenajs/asena": "^0.1.17",
     "@hono/zod-validator": "^0.2.2",
-    "hono": "^4.6.8",
-    "winston": "^3.15.0",
+    "hono": "^4.6.10",
+    "winston": "^3.17.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@asenajs/asena-cli": "^0.1.1",
     "@types/bun": "latest",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "eslint": "^8.57.1",
