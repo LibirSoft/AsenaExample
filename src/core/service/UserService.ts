@@ -1,7 +1,8 @@
-import { Inject, Service } from '@asenajs/asena';
 import { UserRepository } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
 import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
+import { Inject } from '@asenajs/asena/ioc';
+import { Service } from '@asenajs/asena/server';
 
 @Service()
 export class UserService {

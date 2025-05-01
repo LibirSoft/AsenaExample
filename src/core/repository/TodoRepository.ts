@@ -1,5 +1,6 @@
-import { Component, Inject } from '@asenajs/asena';
-import {DatabaseService, type FakeDatabase} from '../../db/DatabaseService.ts';
+import { Component } from '@asenajs/asena/server';
+import { DatabaseService, type FakeDatabase } from '../../db/DatabaseService.ts';
+import { Inject } from '@asenajs/asena/ioc';
 
 export interface Todo {
   id: number;

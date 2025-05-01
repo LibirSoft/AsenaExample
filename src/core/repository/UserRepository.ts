@@ -1,6 +1,7 @@
-import { Component, Inject } from '@asenajs/asena';
+import { Component } from '@asenajs/asena/server';
 import { DatabaseService, type FakeDatabase } from '../../db/DatabaseService.ts';
 import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
+import { Inject } from '@asenajs/asena/ioc';
 
 @Component()
 export class UserRepository {

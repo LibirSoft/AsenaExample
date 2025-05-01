@@ -3,18 +3,17 @@
   "module": "src/index.ts",
   "scripts": {
     "build": "asena build",
-    "start": "asena dev start",
+    "start": "bun out/index.asena.js",
     "generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@asenajs/asena": "^0.1.18",
-    "@hono/zod-validator": "^0.2.2",
-    "hono": "^4.6.12",
-    "winston": "^3.17.0",
-    "zod": "^3.23.8"
+    "@asenajs/asena": "link:@asenajs/asena",
+    "@asenajs/hono-adapter": "link:@asenajs/hono-adapter",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
-    "@asenajs/asena-cli": "^0.1.4",
+    "@asenajs/asena-cli": "0.2.0",
+    "@hono/zod-validator": "^0.5.0",
     "@types/bun": "latest",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "eslint": "^8.57.1",
@@ -23,11 +22,13 @@
     "eslint-plugin-alloy": "^1.2.1",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-n": "^16.6.2",
-    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-promise": "^6.6.0",
-    "prettier": "^3.4.0"
+    "hono": "^4.7.7",
+    "prettier": "^3.5.3",
+    "zod": "^3.24.3"
   },
   "peerDependencies": {
-    "typescript": "^5.5.4"
+    "typescript": "^5.8.3"
   }
 }

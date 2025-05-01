@@ -1,6 +1,8 @@
-import { type AsenaContext, Inject, Middleware, type MiddlewareService } from '@asenajs/asena';
-import type { HonoRequest, Next } from 'hono';
 import { UserService } from '../core/service/UserService.ts';
+import { Middleware } from '@asenajs/asena/server';
+import type { Context, MiddlewareService } from '@asenajs/hono-adapter';
+import { Inject } from '@asenajs/asena/ioc';
+import type { Next } from 'hono';
 
 @Middleware()
 export class TestMiddleware implements MiddlewareService {
@@ -8,7 +10,7 @@ export class TestMiddleware implements MiddlewareService {
   @Inject(UserService)
   private userService: UserService;
 
-  public async handle(context: AsenaContext<HonoRequest, Response>, next: Next) {
+  public async handle(context: Context, next: Next) {
     context.setValue('test', { name: 'ahmet', surname: 'yılmaz' });
 
     console.log(this.userService.getUsers());

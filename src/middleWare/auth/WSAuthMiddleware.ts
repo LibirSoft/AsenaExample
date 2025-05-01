@@ -1,10 +1,12 @@
-import { Inject, Middleware, type Context, type MiddlewareService } from '@asenajs/asena';
 import { UserService } from '../../core/service/UserService';
 import type { Next } from 'hono';
 import { Cookie_secret, Token_secret } from '../../env';
 import { HTTPException } from 'hono/http-exception';
 import { Jwt } from 'hono/utils/jwt';
-import { ClientErrorStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
+import { Middleware } from '@asenajs/asena/server';
+import type { Context, MiddlewareService } from '@asenajs/hono-adapter';
+import { Inject } from '@asenajs/asena/ioc';
+import { ClientErrorStatusCode } from '@asenajs/asena/web-types';
 
 @Middleware()
 export class WSAuthMiddleware implements MiddlewareService {
@@ -19,7 +21,7 @@ export class WSAuthMiddleware implements MiddlewareService {
     if (!cookie) {
       console.log('no cookie');
 
-      throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
+      throw new HTTPException(ClientErrorStatusCode.Unauthorized, { res: response as Response });
     }
 
     let user: any;
@@ -31,11 +33,11 @@ export class WSAuthMiddleware implements MiddlewareService {
 
       user = await this.userService.getUserById(verified['id'] as number);
     } catch (e) {
-      throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
+      throw new HTTPException(ClientErrorStatusCode.Unauthorized, { res: response as Response });
     }
 
     if (!user) {
-      throw new HTTPException(ClientErrorStatusCode.UNAUTHORIZED, { res: response as Response });
+      throw new HTTPException(ClientErrorStatusCode.Unauthorized, { res: response as Response });
     }
 
     context.setWebSocketValue({ userName: user.userName, id: user.id });

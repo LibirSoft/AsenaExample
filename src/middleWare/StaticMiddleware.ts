@@ -1,14 +1,17 @@
-import { Middleware, Override } from '@asenajs/asena';
-import type { MiddlewareService } from '@asenajs/asena';
+import { Middleware, Override } from '@asenajs/asena/server';
 import { serveStatic } from 'hono/bun';
+import type { MiddlewareService } from '@asenajs/hono-adapter';
+import type { Context } from 'hono';
 
-@Override()
 @Middleware()
 export class StaticMiddleware implements MiddlewareService {
 
-  public async handle(context, next) {
+  @Override()
+  // @ts-ignore
+  public async handle(context: Context, next) {
+
     return serveStatic({
-      root: './public',
+      root: './',
       onNotFound: (path, c) => {
         console.log(`${path} is not found, you access ${c.req.path}`);
       },
