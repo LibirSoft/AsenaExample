@@ -1,24 +1,19 @@
-import { Middleware, Override } from '@asenajs/asena/server';
-import { serveStatic } from 'hono/bun';
-import type { MiddlewareService } from '@asenajs/hono-adapter';
-import type { Context } from 'hono';
+import { StaticServe } from '@asenajs/asena/server';
+import { type Context, StaticServeService } from '@asenajs/hono-adapter';
 
-@Middleware()
-export class StaticMiddleware implements MiddlewareService {
+@StaticServe({ root: './public' })
+export class StaticMiddleware extends StaticServeService {
 
-  @Override()
-  // @ts-ignore
-  public async handle(context: Context, next) {
+  public rewriteRequestPath(path: string): string {
+    return path.replace(/^\/static\/|^static\//, '');
+  }
 
-    return serveStatic({
-      root: './',
-      onNotFound: (path, c) => {
-        console.log(`${path} is not found, you access ${c.req.path}`);
-      },
-      rewriteRequestPath: (path) => {
-        return path.replace(/^\/static/, '');
-      },
-    })(context, next);
+  public onFound(_path: string, _c: Context): void | Promise<void> {
+    console.log('Yes you found the file ');
+  }
+
+  public onNotFound(path: string, c: Context): void | Promise<void> {
+    console.log(`${path} is not found, you access ${c.req.path}`);
   }
 
 }

@@ -4,6 +4,7 @@
   "scripts": {
     "build": "asena build",
     "start": "bun out/index.asena.js",
+    "build:start": "bun run build && bun run start",
     "generate": "drizzle-kit generate"
   },
   "dependencies": {

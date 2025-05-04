@@ -24,7 +24,7 @@ export class AuthController {
   public async login(context: Context) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
-    let user: User;
+    let user: User | null;
 
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
