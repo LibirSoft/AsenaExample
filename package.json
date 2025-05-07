@@ -10,8 +10,7 @@
   "dependencies": {
     "@asenajs/asena": "^0.3.0",
     "@asenajs/asena-logger": "^1.0.0",
-    "@asenajs/hono-adapter": "^1.1.0",
-    "winston": "^3.17.0"
+    "@asenajs/hono-adapter": "^1.1.0"
   },
   "devDependencies": {
     "@asenajs/asena-cli": "0.3.2",

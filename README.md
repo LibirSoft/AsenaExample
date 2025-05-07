@@ -1,5 +1,5 @@
 # Asena example
-In this project we create a simple crud appliaction for showing how to use asena for your project.
+Latest asena example project. For you to inspect files
 
 To install dependencies:
 
@@ -10,7 +10,7 @@ bun install
 To run:
 
 ```bash
-bun run start
+bun run build:start
 ```
 
 This project was created for usage example of asena
