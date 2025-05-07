@@ -1,6 +1,7 @@
-import { AsenaWebSocketService, type Socket, WebSocket } from '@asenajs/asena';
 import { WSAuthMiddleware } from '../middleWare/auth/WSAuthMiddleware.ts';
 import type { User } from '../core/entitiy/User.ts';
+import { WebSocket } from '@asenajs/asena/server';
+import { AsenaWebSocketService, type Socket } from '@asenajs/asena/web-socket';
 
 @WebSocket({ path: 'secret-chat', middlewares: [WSAuthMiddleware], name: 'TestWebSocket2' })
 export class TestWebSocket2 extends AsenaWebSocketService<{ user: User }> {

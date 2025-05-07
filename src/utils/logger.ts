@@ -1,3 +1,3 @@
-import { DefaultLogger } from '@asenajs/asena';
+import { AsenaLogger } from '@asenajs/asena-logger';
 
-export const logger = new DefaultLogger();
+export const logger = new AsenaLogger();

@@ -1,11 +1,14 @@
+import { AsenaWebSocketService, type Socket } from '@asenajs/asena/web-socket';
+import { WebSocket } from '@asenajs/asena/server';
 import type { User } from '../core/entitiy/User.ts';
-import { AsenaWebSocketService, type Socket, WebSocket } from '@asenajs/asena';
 
-@WebSocket({ path: 'chat', middlewares: [], name: 'TestWebSocket' })
+@WebSocket({ path: 'chat', name: 'TestWebSocket' })
 export class TestWebSocket extends AsenaWebSocketService<{ user: User }> {
 
   public onMessage(ws: Socket, message: Buffer | string) {
     console.log('WebSocket sent a message:', message.toString());
+
+    console.log(this.server);
 
     ws.publishText('room', message.toString());
 

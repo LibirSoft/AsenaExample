@@ -1,4 +1,3 @@
-import { type Context, Controller, Get, Inject, Post } from '@asenajs/asena';
 import { UserService } from '../core/service/UserService.ts';
 import { sign } from 'hono/jwt';
 import { Cookie_secret, Token_secret } from '../env.ts';
@@ -9,7 +8,11 @@ import type { User } from '../core/entitiy/User.ts';
 import { logger } from '../utils/logger.ts';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/dist/lib/server/web/http';
+import { Controller } from '@asenajs/asena/server';
+import { Inject } from '@asenajs/asena/ioc';
+import { Get, Post } from '@asenajs/asena/web';
+import type { Context } from '@asenajs/hono-adapter';
+import { ClientErrorStatusCode, SuccessStatusCode } from '@asenajs/asena/web-types';
 
 @Controller('/auth')
 export class AuthController {
@@ -21,30 +24,30 @@ export class AuthController {
   public async login(context: Context) {
     const body = await context.getBody<{ userName: string; password: string }>();
 
-    let user: User;
+    let user: User | null;
 
     try {
       user = await this.userService.getUserByFirstName(body.userName, body.password);
     } catch (e) {
-      return context.send({ success: false, message: 'An error occurred' }, ClientErrorStatusCode.BAD_REQUEST);
+      return context.send({ success: false, message: 'An error occurred' }, ClientErrorStatusCode.BadRequest);
     }
 
     if (!user) {
-      return context.send({ success: false, message: 'User not found' }, ClientErrorStatusCode.NOT_FOUND);
+      return context.send({ success: false, message: 'User not found' }, ClientErrorStatusCode.NotFound);
     }
 
     const token = await sign({ ...user }, Token_secret);
 
     await context.setCookie('token', token, { secret: Cookie_secret });
 
-    return context.send({ success: true, message: 'successfully logged in' }, SuccessStatusCode.OK);
+    return context.send({ success: true, message: 'successfully logged in' }, SuccessStatusCode.Ok);
   }
 
   @Get({ path: '/logout', middlewares: [AuthMiddleware] })
   public async logout(context: Context) {
     await context.deleteCookie('token');
 
-    return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.OK);
+    return context.send({ success: true, message: 'successfully logged out' }, SuccessStatusCode.Ok);
   }
 
   @Post({ path: '/signup', validator: CreateUserValidator })
@@ -66,7 +69,7 @@ export class AuthController {
     } catch (e) {
       logger.error(e);
 
-      return context.send('Age must be a number', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send('Age must be a number', ClientErrorStatusCode.BadRequest);
     }
 
     const createUSerDto = {
@@ -83,10 +86,10 @@ export class AuthController {
     } catch (e) {
       logger.error(e);
 
-      return context.send('An error occurred', ClientErrorStatusCode.BAD_REQUEST);
+      return context.send('An error occurred', ClientErrorStatusCode.BadRequest);
     }
 
-    return context.send({ success: true, message: 'successfully signed up' }, SuccessStatusCode.OK);
+    return context.send({ success: true, message: 'successfully signed up' }, SuccessStatusCode.Ok);
   }
 
   @Get({ path: '/me', middlewares: [AuthMiddleware] })
@@ -95,7 +98,7 @@ export class AuthController {
 
     console.log(user);
 
-    return context.send(user, SuccessStatusCode.OK);
+    return context.send(user, SuccessStatusCode.Ok);
   }
 
 }
