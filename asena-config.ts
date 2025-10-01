@@ -11,5 +11,7 @@ export default defineConfig({
       whitespace: true,
       identifiers: false,
     },
+    // @ts-ignore
+    keepNames: true,
   },
 });

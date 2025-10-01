@@ -7,8 +7,7 @@ export class AuthValidator extends ValidationService {
 
   public json() {
     return z.object({
-      userName: z.string({ message: 'Username is required' }),
-      password: z.string({ message: 'Password is required' }),
+      email: z.string().email({ message: 'Valid email is required' }),
     });
   }
 

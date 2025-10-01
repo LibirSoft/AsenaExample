@@ -1,31 +1,49 @@
-import { Component } from '@asenajs/asena/server';
-import { DatabaseService, type FakeDatabase } from '../../db/DatabaseService.ts';
-import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
-import { Inject } from '@asenajs/asena/ioc';
+import { UserSchema, type UserSchemaType, type User, type NewUser } from '../schemas/User.ts';
+import { BaseRepository, Repository } from '@asenajs/asena-drizzle';
+import type { BunSQLDatabase } from 'drizzle-orm/bun-sql';
+import { eq } from 'drizzle-orm';
 
-@Component()
-export class UserRepository {
+export interface CreateUserDto {
+  name: string;
+  email: string;
+}
 
-  @Inject(DatabaseService, (service: DatabaseService) => service.connection)
-  private db: FakeDatabase;
+@Repository({
+  databaseService: 'DatabaseService',
+  table: UserSchema,
+  name: 'UserRepository',
+})
+export class UserRepository extends BaseRepository<UserSchemaType, BunSQLDatabase> {
 
-  public getUsers() {
-    return this.db.users;
+  public async getUsers(): Promise<User[]> {
+    return this.db!.select().from(UserSchema);
   }
 
-  public getUserById(id: number) {
-    return this.db.users.filter((user) => user.id === id);
+  public async getUserById(id: string): Promise<User | null> {
+    const [user] = await this.db!.select().from(UserSchema).where(eq(UserSchema.id, id)).limit(1);
+
+    return user || null;
   }
 
-  public getUserByFirstName(userName: string, password: string) {
-    return this.db.users.filter((user) => user.userName === userName && user.password === password);
+  public async getUserByEmail(email: string): Promise<User | null> {
+    const [user] = await this.db!.select().from(UserSchema).where(eq(UserSchema.email, email)).limit(1);
+
+    return user || null;
   }
 
-  public createUser(createUserDto: CreteUserDto) {
-    return this.db.users.push({
-      id: this.db.users.length + 1,
-      ...createUserDto,
-    });
+  public async getUserByName(name: string): Promise<User[]> {
+    return this.db!.select().from(UserSchema).where(eq(UserSchema.name, name));
+  }
+
+  public async createUser(createUserDto: CreateUserDto): Promise<User> {
+    const newUser: NewUser = {
+      name: createUserDto.name,
+      email: createUserDto.email,
+    };
+
+    const [user] = await this.db!.insert(UserSchema).values(newUser).returning();
+
+    return user;
   }
 
 }

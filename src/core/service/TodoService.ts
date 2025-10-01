@@ -1,33 +1,32 @@
 import { Service } from '@asenajs/asena/server';
-import { type CreateTodoDto, type Todo, TodoRepository } from '../repository/TodoRepository.ts';
+import type { TodoRepository, CreateTodoDto, UpdateTodoDto } from '../repository/TodoRepository.ts';
 import { Inject } from '@asenajs/asena/ioc';
+import type { Todo } from '../schemas/Todo.ts';
 
-@Service()
+@Service("TodoService")
 export class TodoService {
 
-  @Inject(TodoRepository)
+  @Inject('TodoRepository')
   private todoRepository: TodoRepository;
 
-  public getTodosByUserId(userId: number) {
-    return this.todoRepository.getTodosByUserId(userId);
+  public async getTodosByUserId(userId: string): Promise<Todo[]> {
+    return await this.todoRepository.getTodosByUserId(userId);
   }
 
-  public async getTodoByIdAndUserId(id: number, userId: number) {
-    const todos = await this.todoRepository.getTodoByIdAndUserId(id, userId);
-
-    return todos ? todos[0] : null;
+  public async getTodoByIdAndUserId(id: string, userId: string): Promise<Todo | null> {
+    return await this.todoRepository.getTodoByIdAndUserId(id, userId);
   }
 
-  public deleteTodoByIdAndUserId(id: number, userId: number) {
-    return this.todoRepository.deleteTodoByIdAndUserId(id, userId);
+  public async deleteTodoByIdAndUserId(id: string, userId: string): Promise<boolean> {
+    return await this.todoRepository.deleteTodoByIdAndUserId(id, userId);
   }
 
-  public updateTodoById(todo: Todo) {
-    return this.todoRepository.updateTodoById(todo);
+  public async updateTodoById(id: string, userId: string, updateTodoDto: UpdateTodoDto): Promise<Todo | null> {
+    return await this.todoRepository.updateTodoById(id, userId, updateTodoDto);
   }
 
-  public createTodo(userId: number, createTodoDto: CreateTodoDto) {
-    return this.todoRepository.createTodo(userId, createTodoDto);
+  public async createTodo(userId: string, createTodoDto: CreateTodoDto): Promise<Todo> {
+    return await this.todoRepository.createTodo(userId, createTodoDto);
   }
 
 }

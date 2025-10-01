@@ -1,55 +1,43 @@
-import { UserRepository } from '../repository/UserRepository.ts';
+import type { UserRepository, CreateUserDto } from '../repository/UserRepository.ts';
 import { logger } from '../../utils/logger.ts';
-import type { CreteUserDto } from '../../middleWare/validator/CreateUserValidator.ts';
 import { Inject } from '@asenajs/asena/ioc';
 import { Service } from '@asenajs/asena/server';
+import type { User } from '../schemas/User.ts';
 
-@Service()
+@Service('UserService')
 export class UserService {
 
-  @Inject(UserRepository)
+  @Inject('UserRepository')
   private userRepository: UserRepository;
 
-  public getHello(): string {
-    return 'Hello World! Huuuray!!!';
+  public async getUsers(): Promise<User[]> {
+    logger.info('Getting users from the database');
+
+    return await this.userRepository.getUsers();
   }
 
-  public getUsers() {
-    // logger.info('Getting users from the database');
-
-    return this.userRepository.getUsers();
-  }
-
-  public async getUserById(id: number) {
+  public async getUserById(id: string): Promise<User | null> {
     logger.info('Getting a user from the database by id');
 
-    const users = this.userRepository.getUserById(id);
-
-    if (users.length > 0) {
-      return users[0];
-    }
-
-    return null;
+    return await this.userRepository.getUserById(id);
   }
 
-  public async getUserByFirstName(firstName: string, password: string) {
-    logger.info('Getting a user from the database by first name');
+  public async getUserByEmail(email: string): Promise<User | null> {
+    logger.info('Getting a user from the database by email');
 
-    // TODO: hash password
-
-    const users = this.userRepository.getUserByFirstName(firstName, password);
-
-    if (users.length > 0) {
-      return users[0];
-    }
-
-    return null;
+    return await this.userRepository.getUserByEmail(email);
   }
 
-  public createUser(createUserDto: CreteUserDto) {
-    console.log('createUserDto', createUserDto);
+  public async getUserByName(name: string): Promise<User[]> {
+    logger.info('Getting users from the database by name');
 
-    this.userRepository.createUser(createUserDto);
+    return await this.userRepository.getUserByName(name);
+  }
+
+  public async createUser(createUserDto: CreateUserDto): Promise<User> {
+    logger.info('Creating a new user in the database');
+
+    return await this.userRepository.createUser(createUserDto);
   }
 
 }

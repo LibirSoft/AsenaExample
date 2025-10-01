@@ -1,73 +1,71 @@
-import { Component } from '@asenajs/asena/server';
-import { DatabaseService, type FakeDatabase } from '../../db/DatabaseService.ts';
-import { Inject } from '@asenajs/asena/ioc';
-
-export interface Todo {
-  id: number;
-  title: string;
-  description: string;
-  isCompleted: boolean;
-  userId: number;
-}
+import { BaseRepository, Repository } from '@asenajs/asena-drizzle';
+import { TodoSchema, type Todo, type TodoSchemaType, type NewTodo } from '../schemas/Todo.ts';
+import { and, desc, eq } from 'drizzle-orm';
+import type { BunSQLDatabase } from 'drizzle-orm/bun-sql';
 
 export interface CreateTodoDto {
   title: string;
   description: string;
-  isCompleted: boolean;
+  isCompleted?: boolean;
 }
 
-@Component()
-export class TodoRepository {
+export interface UpdateTodoDto {
+  title?: string;
+  description?: string;
+  isCompleted?: boolean;
+}
 
-  @Inject(DatabaseService, (service: DatabaseService) => service.connection)
-  private connection: FakeDatabase;
+@Repository({
+  databaseService: 'DatabaseService',
+  table: TodoSchema,
+  name: 'TodoRepository',
+})
+export class TodoRepository extends BaseRepository<TodoSchemaType, BunSQLDatabase> {
 
-  public async getTodosByUserId(userId: number) {
-    return this.connection.todos.filter((user) => user.id === userId);
+  public async getTodosByUserId(userId: string): Promise<Todo[]> {
+    return this.db!.select().from(TodoSchema).where(eq(TodoSchema.userId, userId)).orderBy(desc(TodoSchema.createdAt));
   }
 
-  public async getTodoByIdAndUserId(id: number, userId: number) {
-    return this.connection.todos.filter((todo) => todo.id === id && todo.userId === userId);
+  public async getTodoByIdAndUserId(id: string, userId: string): Promise<Todo | null> {
+    const [todo] = await this.db!.select()
+      .from(TodoSchema)
+      .where(and(eq(TodoSchema.id, id), eq(TodoSchema.userId, userId)))
+      .limit(1);
+
+    return todo || null;
   }
 
-  public async deleteTodoByIdAndUserId(id: number, userId: number) {
-    const todo = this.connection.todos.find((todo) => todo.id === id && todo.userId === userId);
+  public async deleteTodoByIdAndUserId(id: string, userId: string): Promise<boolean> {
+    const result = await this.db!.delete(TodoSchema)
+      .where(and(eq(TodoSchema.id, id), eq(TodoSchema.userId, userId)))
+      .returning();
 
-    if (!todo) {
-      return false;
-    }
-
-    this.connection.todos = this.connection.todos.filter((todo) => todo.id !== id);
-
-    return true;
+    return result.length > 0;
   }
 
-  public async createTodo(userId: number, createTodoDto: CreateTodoDto) {
-    const todo: Todo = {
-      id: this.connection.todos.length + 1,
+  public async createTodo(userId: string, createTodoDto: CreateTodoDto): Promise<Todo> {
+    const newTodo: NewTodo = {
       userId,
-      ...createTodoDto,
+      title: createTodoDto.title,
+      description: createTodoDto.description,
+      isCompleted: createTodoDto.isCompleted ?? false,
     };
 
-    this.connection.todos.push(todo);
+    const [todo] = await this.db!.insert(TodoSchema).values(newTodo).returning();
 
     return todo;
   }
 
-  public async updateTodoById(todoDto: Todo) {
-    const todo = this.connection.todos.find((todo) => todo.id === todoDto.id);
+  public async updateTodoById(id: string, userId: string, updateTodoDto: UpdateTodoDto): Promise<Todo | null> {
+    const [todo] = await this.db!.update(TodoSchema)
+      .set({
+        ...updateTodoDto,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(TodoSchema.id, id), eq(TodoSchema.userId, userId)))
+      .returning();
 
-    if (!todo) {
-      return false;
-    }
-
-    todo.title = todoDto.title;
-
-    todo.description = todoDto.description;
-
-    todo.isCompleted = todoDto.isCompleted;
-
-    return todo;
+    return todo || null;
   }
 
 }
