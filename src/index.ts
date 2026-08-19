@@ -1,4 +1,15 @@
-import { AsenaServer } from '@asenajs/asena';
-import { logger } from './utils/logger.ts';
+import 'reflect-metadata';
+import { AsenaServerFactory } from '@asenajs/asena';
+import { createHonoAdapter } from '@asenajs/hono-adapter';
+import { AsenaLogger } from '@asenajs/asena-logger';
+import { env } from './env';
 
-await new AsenaServer().logger(logger).port(3000).start();
+const [adapter, logger] = createHonoAdapter({ logger: new AsenaLogger() });
+
+const server = await AsenaServerFactory.create({
+  adapter,
+  logger,
+  port: env.port,
+});
+
+await server.start();

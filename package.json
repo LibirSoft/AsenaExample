@@ -3,33 +3,33 @@
   "module": "src/index.ts",
   "type": "module",
   "scripts": {
+    "dev": "bun run --hot src/index.ts",
     "start": "bun src/index.ts",
-    "generate": "drizzle-kit generate"
+    "build": "asena build",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@asenajs/asena": "^0.1.5",
-    "@hono/zod-validator": "^0.2.2",
-    "drizzle-orm": "^0.33.0",
-    "hono": "^4.5.9",
-    "postgres": "^3.4.4",
-    "winston": "^3.14.2",
-    "zod": "^3.23.8"
+    "@asenajs/asena": "^0.10.1",
+    "@asenajs/asena-drizzle": "^3.0.0",
+    "@asenajs/asena-logger": "^2.0.0",
+    "@asenajs/asena-openapi": "^2.0.0",
+    "@asenajs/hono-adapter": "^3.1.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.3",
+    "reflect-metadata": "^0.2.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@typescript-eslint/eslint-plugin": "^6.4.0",
-    "drizzle-kit": "^0.24.2",
-    "eslint": "^8.0.1",
-    "eslint-config-alloy": "^5.1.2",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-alloy": "^1.2.1",
-    "eslint-plugin-import": "^2.25.2",
-    "eslint-plugin-n": "^15.0.0 || ^16.0.0 ",
-    "eslint-plugin-prettier": "^5.1.3",
-    "eslint-plugin-promise": "^6.0.0",
-    "prettier": "^3.2.5"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "@asenajs/asena-cli": "^0.10.0",
+    "@types/bun": "^1.3.14",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "5.9",
+    "typescript-eslint": "^8.67.0"
   }
 }
