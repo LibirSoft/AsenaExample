@@ -1,0 +1,173 @@
+import { WebSocket } from '@asenajs/asena/decorators';
+import { Inject } from '@asenajs/asena/decorators/ioc';
+import { AsenaWebSocketService, type Socket } from '@asenajs/asena/web-socket';
+import { isHttpException } from '@asenajs/asena/adapter';
+import { ChatService } from '../services/ChatService';
+import { WSAuthMiddleware } from '../middlewares/WSAuthMiddleware';
+
+/** Set by WSAuthMiddleware during the handshake (context.setWebSocketValue). */
+export interface WsUser {
+  id: number;
+  userName: string;
+}
+
+type ClientMessage =
+  | { type: 'join'; roomId: number }
+  | { type: 'leave'; roomId: number }
+  | { type: 'message'; roomId: number; content: string }
+  | { type: 'typing'; roomId: number };
+
+const roomTopic = (roomId: number) => `room:${roomId}`;
+
+/**
+ * Real-time chat over the /chat-room namespace. Membership rules are enforced
+ * by ChatService — 'join' registers the membership, so a 'message' from a
+ * non-member is rejected there with a 403/404 that we relay as an error event.
+ */
+@WebSocket({ path: '/chat-room', middlewares: [WSAuthMiddleware], name: 'ChatWebSocket' })
+export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
+  @Inject(ChatService)
+  private chatService!: ChatService;
+
+  protected onOpen(ws: Socket<WsUser>): void {
+    ws.send(
+      JSON.stringify({
+        type: 'connected',
+        message: 'Welcome to the chat!',
+        userId: ws.data.values.id,
+        userName: ws.data.values.userName,
+      }),
+    );
+  }
+
+  protected async onMessage(ws: Socket<WsUser>, message: Buffer | string): Promise<void> {
+    let data: ClientMessage;
+
+    try {
+      data = JSON.parse(message.toString());
+    } catch {
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON payload' }));
+      return;
+    }
+
+    const user = ws.data.values;
+
+    switch (data.type) {
+      case 'join':
+        return this.handleJoin(ws, user, data.roomId);
+      case 'leave':
+        return this.handleLeave(ws, user, data.roomId);
+      case 'message':
+        return this.handleMessage(ws, user, data.roomId, data.content);
+      case 'typing':
+        return this.handleTyping(ws, user, data.roomId);
+      default:
+        ws.send(JSON.stringify({ type: 'error', message: `Unknown message type` }));
+    }
+  }
+
+  private async handleJoin(ws: Socket<WsUser>, user: WsUser, roomId: number): Promise<void> {
+    try {
+      await this.chatService.joinRoom(user.id, roomId);
+    } catch (error) {
+      this.sendWsError(ws, roomId, error);
+      return;
+    }
+
+    ws.subscribe(roomTopic(roomId));
+
+    // this.to() includes the sender — the joiner gets a confirmation too.
+    this.to(roomTopic(roomId), {
+      type: 'joined',
+      roomId,
+      userId: user.id,
+      userName: user.userName,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private async handleLeave(ws: Socket<WsUser>, user: WsUser, roomId: number): Promise<void> {
+    try {
+      await this.chatService.leaveRoom(user.id, roomId);
+    } catch (error) {
+      this.sendWsError(ws, roomId, error);
+      return;
+    }
+
+    ws.unsubscribe(roomTopic(roomId));
+
+    this.to(roomTopic(roomId), {
+      type: 'left',
+      roomId,
+      userId: user.id,
+      userName: user.userName,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private async handleMessage(
+    ws: Socket<WsUser>,
+    user: WsUser,
+    roomId: number,
+    content: string,
+  ): Promise<void> {
+    if (!ws.isSubscribed(roomTopic(roomId))) {
+      ws.send(JSON.stringify({ type: 'error', roomId, message: 'Join the room before messaging' }));
+      return;
+    }
+
+    let saved;
+
+    try {
+      saved = await this.chatService.createMessage(user.id, roomId, content);
+    } catch (error) {
+      this.sendWsError(ws, roomId, error);
+      return;
+    }
+
+    this.to(roomTopic(roomId), {
+      type: 'message',
+      roomId,
+      messageId: saved.id,
+      content: saved.content,
+      userId: user.id,
+      userName: user.userName,
+      timestamp: saved.createdAt.toISOString(),
+    });
+  }
+
+  private handleTyping(ws: Socket<WsUser>, user: WsUser, roomId: number): void {
+    // No repository round-trip per keystroke — only subscribed (member) sockets
+    // can receive room events anyway.
+    if (!ws.isSubscribed(roomTopic(roomId))) {
+      return;
+    }
+
+    this.to(roomTopic(roomId), {
+      type: 'typing',
+      roomId,
+      userId: user.id,
+      userName: user.userName,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /** Relays a domain error (404/403 HttpException) back to the offending socket. */
+  private sendWsError(ws: Socket<WsUser>, roomId: number, error: unknown): void {
+    const message = isHttpException(error) ? extractMessage(error) : 'Failed to process message';
+
+    ws.send(JSON.stringify({ type: 'error', roomId, message }));
+  }
+}
+
+function extractMessage(error: unknown): string {
+  const body = (error as { body?: string | object }).body;
+
+  if (typeof body === 'string') {
+    return body;
+  }
+
+  const message = (body as { message?: unknown } | undefined)?.message;
+
+  return typeof message === 'string' ? message : 'Request failed';
+}

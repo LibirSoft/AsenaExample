@@ -1,6 +1,6 @@
 # AsenaJS Example — Todo API
 
-A production-shaped **Todo application** built with [AsenaJS](https://asena.sh) — the decorator-based
+A production-shaped **Todo + Chat application** built with [AsenaJS](https://asena.sh) — the decorator-based
 IoC web framework for the [Bun](https://bun.sh) runtime. Think "NestJS/Spring Boot style", but native
 to Bun: TypeScript decorators for wiring, field-based dependency injection, and an HTTP layer that
 binds directly to `Bun.serve()` through the Hono adapter.
@@ -8,7 +8,8 @@ binds directly to `Bun.serve()` through the Hono adapter.
 This repo is a **reference application**: every feature is implemented the way the framework
 recommends, so you can copy patterns directly into your own project — JWT authentication, Zod
 validation, OpenAPI docs generated from those same validators, PostgreSQL access through Drizzle
-with declarative transactions, file uploads, static serving, and a three-level test suite.
+with declarative transactions, file uploads, static serving, real-time chat over WebSockets with
+room-based pub/sub, and a three-level test suite.
 
 > Originally written against AsenaJS `0.1.x`, fully modernized to `0.10.x` +
 > `@asenajs/hono-adapter` `3.x`. Short migration notes are at the [end](#migration-notes-from-01x).
@@ -99,6 +100,7 @@ Layering rules enforced throughout:
 | File upload | Multipart signup with optional profile image (`z.file()`), safe generated file names | `src/services/FileStorageService.ts` |
 | Static files | `@StaticServe` serving `public/` under `/static` | `src/statics/PublicStaticServe.ts` |
 | Errors | Central `onError`/`onNotFound`, `HttpException`, `isValidationError()` before `isHttpException()` | `src/config/AppConfig.ts` |
+| WebSocket | Real-time chat: authenticated namespace, room pub/sub, membership enforced by the service layer | `src/websockets/ChatWebSocket.ts` |
 | Testing | `mockComponent` (unit), `createWebTest` (web slice), `createTestApp` (e2e) — no DB needed | `tests/` |
 
 ## Requirements
@@ -162,10 +164,11 @@ src/
 │  └─ MigrateService.ts         # applies ./drizzle migrations on @OnStart
 ├─ repositories/                # @Repository + BaseRepository, one per domain
 ├─ services/                    # business logic; services own the invariants
-├─ middlewares/                 # AuthMiddleware, GlobalCors, AuthRateLimiter
+├─ middlewares/                 # AuthMiddleware, WSAuthMiddleware, GlobalCors, AuthRateLimiter
 ├─ validators/                  # Zod validators — validate requests AND feed OpenAPI
 ├─ controllers/                 # thin HTTP layer only
 ├─ statics/                     # @StaticServe for public/
+├─ websockets/                  # @WebSocket namespaces (chat, public notifications)
 ├─ openapi/AppOpenApi.ts        # @OpenApi({ ui: true })
 └─ types/asena-variables.d.ts   # typed context.getValue('user')
 ```
@@ -183,13 +186,55 @@ src/
 | `PUT` | `/todos/:id` | Bearer | Partial update |
 | `DELETE` | `/todos/:id` | Bearer | Delete |
 | `GET` | `/static/*` | — | Static files (profile uploads) |
+| `POST` | `/chat/rooms` | Bearer | Create a chat room (creator becomes owner + member) |
+| `GET` | `/chat/rooms` | Bearer | List all rooms (content requires membership) |
+| `GET` | `/chat/rooms/:id` | Bearer | Room detail (members only → 403) |
+| `DELETE` | `/chat/rooms/:id` | Bearer | Delete a room, messages follow via cascade (owner only) |
+| `POST` | `/chat/rooms/:id/join` | Bearer | Join a room (open, idempotent) |
+| `POST` | `/chat/rooms/:id/leave` | Bearer | Leave a room (members; the owner must delete instead) |
+| `GET` | `/chat/rooms/:id/messages` | Bearer | Room messages, newest first, `?limit=` (members only) |
+| `POST` | `/chat/rooms/:id/messages` | Bearer | Send a message (members only) |
+| `POST` | `/chat/messages/:id/read` | Bearer | Mark a message as read |
+| `DELETE` | `/chat/messages/:id` | Bearer | Delete a message (sender only) |
+| `WS` | `/chat-room` | `?token=` | Real-time chat (see below) |
+| `WS` | `/notifications` | — | Public notification channels demo |
 | `GET` | `/openapi`, `/openapi/ui` | — | Generated spec + Swagger UI |
 | `GET` | `/health` | — | Health check (hidden from the spec) |
 
 Every response uses the same envelope: `{ success: true, ...data }` or
 `{ success: false, message, errors? }`. Validation failures return a structured `400` with
-per-field details, domain errors (`HttpException`) keep their status (401/404/409), and unmatched
+per-field details, domain errors (`HttpException`) keep their status (401/403/404/409), and unmatched
 routes hit the custom `onNotFound` handler.
+
+## WebSocket chat
+
+The REST API above is mirrored by a real-time namespace at `/chat-room`. The handshake is
+authenticated by `WSAuthMiddleware` — browsers cannot set headers on an upgrade request, so the
+bearer token travels as a query parameter (`wss://…/chat-room?token=<jwt>`). Every membership rule
+the REST layer enforces is enforced here too: `join` registers the membership, and `message` from a
+non-member is rejected by `ChatService` and relayed back as an `error` event.
+
+Client → server messages:
+
+```jsonc
+{ "type": "join",    "roomId": 1 }                      // subscribe + become a member
+{ "type": "leave",   "roomId": 1 }                      // unsubscribe + drop membership
+{ "type": "message", "roomId": 1, "content": "hi" }     // persisted, then broadcast
+{ "type": "typing",  "roomId": 1 }                      // ephemeral, members only
+```
+
+Server → client events: `connected`, `joined`, `left`, `message` (with `messageId` and `timestamp`),
+`typing`, `error`. Try it with two terminals:
+
+```bash
+TOKEN=<jwt from /auth/login>
+wscat -c "ws://localhost:3000/chat-room?token=$TOKEN"
+> {"type":"join","roomId":1}
+> {"type":"message","roomId":1,"content":"hello"}
+```
+
+A second, unauthenticated namespace `/notifications` demonstrates the public side of the same API:
+`{"type":"subscribe","channel":"general"}` / `unsubscribe` / `ping`.
 
 ## Testing
 
@@ -203,14 +248,16 @@ Drizzle repositories with in-memory doubles via `overrides`.
 | Full app | `createTestApp` | Whole IoC container + real HTTP server | `tests/e2e/` |
 
 ```bash
-bun test          # 38 tests across 6 files
+bun test          # 68 tests across 8 files
 ```
 
 Notable details worth copying into your own project:
 
 - unit tests configure explicit doubles for name-injected repositories (`overrides` keyed by field name),
 - web tests assert both the routing (`200`) and the rejection paths (`400` validation, `401` auth),
-- the e2e test boots the real OpenAPI post-processor and asserts `@Hidden` routes stay out of the spec.
+- the e2e test boots the real OpenAPI post-processor and asserts `@Hidden` routes stay out of the spec,
+- the chat e2e flow covers the membership lifecycle end to end: non-member `403`s, idempotent join,
+  ownership rules and cascade deletion.
 
 ## Configuration
 
@@ -256,6 +303,10 @@ bun dist/index.asena.js
 - **Security**: plain-text passwords with a `// TODO: hash password` → Argon2id via `Bun.password`,
   cookie-based JWT → `Authorization: Bearer`, hardcoded secrets → environment variables.
 - **Docs**: none → OpenAPI 3.1 generated from the validators with Swagger UI.
-- **Testing**: none → 38 tests across unit / web-slice / e2e levels.
+- **Chat**: the legacy WebSocket chat (pre-0.10 imports, UUID keys without foreign keys, cookie
+  auth, no membership model) was rebuilt on the current stack — serial keys with cascade FKs, a
+  `chat_room_members` membership table, `?token=` WS handshake, and the same layered rules as the
+  rest of the app.
+- **Testing**: none → 68 tests across unit / web-slice / e2e levels.
 - **Tooling**: ESLint flat config, `asena-config.ts` for builds, Drizzle migrations committed
   under `drizzle/`, folder layout matching the CLI conventions (`src/controllers/`, `src/services/`, …).
