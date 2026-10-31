@@ -5,7 +5,7 @@ import { ChatController } from '../../src/controllers/ChatController';
 
 /**
  * Web-slice tests for the protected /chat controller — the controller-level
- * AuthMiddleware and every validator run for real.
+ * AuthMiddleware, every validator and every route context contract run for real.
  */
 const authHeaders = {
   headers: { authorization: 'Bearer valid-token', 'content-type': 'application/json' },
@@ -92,6 +92,38 @@ test('POST /chat/rooms/:id/messages rejects empty content with 400', async () =>
     .expectStatus(400);
 
   expect(mocks.ChatService.createMessage).not.toHaveBeenCalled();
+
+  await app.stop();
+});
+
+test('GET /chat/rooms/:id/messages coerces ?limit through the route contract', async () => {
+  const [adapter] = createHonoAdapter({ logger: silentLogger });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+
+  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
+  mocks.ChatService.getMessages.mockResolvedValue([]);
+
+  await app.get('/chat/rooms/4/messages?limit=20', authHeaders).expectStatus(200);
+  expect(mocks.ChatService.getMessages).toHaveBeenCalledWith(7, 4, 20);
+
+  await app.get('/chat/rooms/4/messages', authHeaders).expectStatus(200);
+  expect(mocks.ChatService.getMessages).toHaveBeenLastCalledWith(7, 4, undefined);
+
+  await app.stop();
+});
+
+test('GET /chat/rooms/:id/messages rejects a non-numeric ?limit with 400', async () => {
+  const [adapter] = createHonoAdapter({ logger: silentLogger });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+
+  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
+
+  await app
+    .get('/chat/rooms/4/messages?limit=abc', authHeaders)
+    .expectStatus(400)
+    .expectJsonContains({ error: 'Validation failed', target: 'query' });
+
+  expect(mocks.ChatService.getMessages).not.toHaveBeenCalled();
 
   await app.stop();
 });

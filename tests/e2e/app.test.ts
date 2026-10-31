@@ -8,26 +8,19 @@ import { AppOpenApi } from '../../src/openapi/AppOpenApi';
 import { GlobalCors } from '../../src/middlewares/GlobalCors';
 import { AuthMiddleware } from '../../src/middlewares/AuthMiddleware';
 import { AuthRateLimiter } from '../../src/middlewares/AuthRateLimiter';
+import { PublicStaticServe } from '../../src/statics/PublicStaticServe';
+import { LoginValidator } from '../../src/validators/LoginValidator';
+import { SignupValidator } from '../../src/validators/SignupValidator';
+import { CreateTodoValidator } from '../../src/validators/TodoValidator';
+import { CreateChatRoomValidator, SendMessageValidator } from '../../src/validators/ChatValidator';
 import { AuthController } from '../../src/controllers/AuthController';
 import { TodoController } from '../../src/controllers/TodoController';
 import { HealthController } from '../../src/controllers/HealthController';
 import { StaticController } from '../../src/controllers/StaticController';
 import { ChatController } from '../../src/controllers/ChatController';
-import { PublicStaticServe } from '../../src/statics/PublicStaticServe';
-import { AuthService } from '../../src/services/AuthService';
-import { UserService, type UserRow } from '../../src/services/UserService';
-import { TodoService, type TodoRow } from '../../src/services/TodoService';
-import { ChatService, type ChatRoomRow, type MessageRow } from '../../src/services/ChatService';
-import { FileStorageService } from '../../src/services/FileStorageService';
-import { LoginValidator } from '../../src/validators/LoginValidator';
-import { SignupValidator } from '../../src/validators/SignupValidator';
-import { CreateTodoValidator, TodoIdValidator, UpdateTodoValidator } from '../../src/validators/TodoValidator';
-import {
-  CreateChatRoomValidator,
-  MessageIdValidator,
-  RoomIdValidator,
-  SendMessageValidator,
-} from '../../src/validators/ChatValidator';
+import type { UserRow } from '../../src/services/UserService';
+import type { TodoRow } from '../../src/services/TodoService';
+import type { ChatRoomRow, MessageRow } from '../../src/services/ChatService';
 
 /**
  * Full-application tests: the real IoC container, middlewares, validators and
@@ -177,6 +170,13 @@ beforeAll(async () => {
 
   app = await createTestApp({
     adapter,
+    // createTestApp follows every @Inject(Class) from these entries, so the
+    // services behind the controllers and middlewares (AuthService,
+    // UserService, TodoService, ChatService, FileStorageService) are
+    // discovered and registered for real. Components referenced only by
+    // decorator options — middlewares, validators, the static-serve class —
+    // and the config/post-processors are not injected by anyone: list them.
+    // Route context contracts (Context.define) are plain classes, not components.
     components: [
       AppConfig,
       AppOpenApi,
@@ -186,24 +186,17 @@ beforeAll(async () => {
       LoginValidator,
       SignupValidator,
       CreateTodoValidator,
-      UpdateTodoValidator,
-      TodoIdValidator,
       CreateChatRoomValidator,
-      RoomIdValidator,
       SendMessageValidator,
-      MessageIdValidator,
+      PublicStaticServe,
       AuthController,
       TodoController,
       HealthController,
       StaticController,
       ChatController,
-      PublicStaticServe,
-      AuthService,
-      UserService,
-      TodoService,
-      ChatService,
-      FileStorageService,
     ],
+    // Repositories are injected by name ('ChatRepository') or replaced here;
+    // a name in overrides also stops the dependency walk.
     overrides: {
       UserRepository: userRepository,
       TodoRepository: todoRepository,

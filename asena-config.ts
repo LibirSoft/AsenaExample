@@ -7,6 +7,6 @@ export default defineConfig({
     outdir: 'dist',
     format: 'esm',
     sourcemap: 'none',
-    minify: true,
+    minify: { whitespace: true, syntax: true, identifiers: false },
   },
 });

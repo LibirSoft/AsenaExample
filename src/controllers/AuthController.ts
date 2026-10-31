@@ -16,9 +16,9 @@ export class AuthController {
 
   @Post({ path: '/signup', validator: SignupValidator })
   public async signup(context: Context) {
-    // getBody() returns the validator output only for json validators; for a
-    // form validator the parsed result lives in req.valid('form') on hono.
-    const dto = context.req.valid('form') as SignupDto;
+    // getParseBody() returns the form validator's output: coerced (age is a
+    // number), with unknown fields stripped — never the raw multipart body.
+    const dto: SignupDto = await context.getParseBody();
     const user = await this.authService.signup(dto);
 
     return context.send({ success: true, message: 'User created successfully', user }, 201);

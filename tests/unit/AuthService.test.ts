@@ -4,7 +4,14 @@ import { isHttpException } from '@asenajs/asena/adapter';
 import { verify } from 'hono/jwt';
 import { AuthService } from '../../src/services/AuthService';
 import type { UserRow } from '../../src/services/UserService';
-import { env } from '../../src/env';
+
+const JWT_SECRET = 'unit-test-secret';
+
+/**
+ * @Value fields are resolved from process.env by mockComponent too; an
+ * override wins over the environment, so the suite never depends on it.
+ */
+const createAuthService = () => mockComponent(AuthService, { overrides: { jwtSecret: JWT_SECRET } });
 
 const passwordHash = await Bun.password.hash('supersecret', { algorithm: 'argon2id' });
 
@@ -30,7 +37,7 @@ const signupDto = {
 
 describe('AuthService', () => {
   test('signup hashes the password, stores the image and seeds a welcome todo', async () => {
-    const { instance, mocks } = mockComponent(AuthService);
+    const { instance, mocks } = createAuthService();
 
     const { passwordHash: _hash, ...publicUser } = { ...userRow, profileImage: '/static/uploads/a.png' };
 
@@ -53,7 +60,7 @@ describe('AuthService', () => {
   });
 
   test('signup rejects an already taken user name with 409', async () => {
-    const { instance, mocks } = mockComponent(AuthService);
+    const { instance, mocks } = createAuthService();
 
     mocks.userService.userNameExists.mockResolvedValue(true);
 
@@ -68,7 +75,7 @@ describe('AuthService', () => {
   });
 
   test('login with wrong credentials throws 401', async () => {
-    const { instance, mocks } = mockComponent(AuthService);
+    const { instance, mocks } = createAuthService();
 
     mocks.userService.getUserByUserName.mockResolvedValue(null);
 
@@ -82,7 +89,7 @@ describe('AuthService', () => {
   });
 
   test('login returns a verifiable JWT for the user', async () => {
-    const { instance, mocks } = mockComponent(AuthService);
+    const { instance, mocks } = createAuthService();
 
     const { passwordHash: _hash, ...publicUser } = userRow;
 
@@ -94,13 +101,13 @@ describe('AuthService', () => {
     expect(user.id).toBe(5);
     expect('passwordHash' in user).toBe(false);
 
-    const payload = (await verify(token, env.jwtSecret, 'HS256')) as { sub: number; userName: string };
+    const payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub: number; userName: string };
     expect(payload.sub).toBe(5);
     expect(payload.userName).toBe('jane');
   });
 
   test('verifyToken rejects a malformed token with 401', async () => {
-    const { instance } = mockComponent(AuthService);
+    const { instance } = createAuthService();
 
     try {
       await instance.verifyToken('not-a-jwt');

@@ -1,5 +1,5 @@
 import { Middleware } from '@asenajs/asena/decorators';
-import { ValidationService } from '@asenajs/hono-adapter';
+import { Context, ValidationService } from '@asenajs/hono-adapter';
 import { z } from 'zod';
 
 const createChatRoomSchema = z.object({
@@ -37,14 +37,6 @@ export class CreateChatRoomValidator extends ValidationService {
   }
 }
 
-/** Validates the :id room parameter of the /chat/rooms/:id routes. */
-@Middleware({ validator: true })
-export class RoomIdValidator extends ValidationService {
-  public param() {
-    return roomIdSchema;
-  }
-}
-
 /**
  * A single validator can cover several request parts: the :id path parameter
  * and the JSON body of POST /chat/rooms/:id/messages are validated together.
@@ -67,10 +59,20 @@ export class SendMessageValidator extends ValidationService {
   }
 }
 
-/** Validates the :id message parameter of the /chat/messages/:id routes. */
-@Middleware({ validator: true })
-export class MessageIdValidator extends ValidationService {
-  public param() {
-    return messageIdSchema;
-  }
-}
+/**
+ * Route context contracts (Context.define) for routes that only need a typed
+ * :id — handlers read `context.input.params.id` as a number. Import them as
+ * values in the controller (never `import type`).
+ */
+
+/** The :id room parameter of the /chat/rooms/:id routes. */
+export class RoomIdContext extends Context.define({ params: roomIdSchema }) {}
+
+/** GET /chat/rooms/:id/messages — the room :id plus an optional ?limit. */
+export class ListMessagesContext extends Context.define({
+  params: roomIdSchema,
+  query: z.object({ limit: z.coerce.number().int().positive().optional() }),
+}) {}
+
+/** The :id message parameter of the /chat/messages/:id routes. */
+export class MessageIdContext extends Context.define({ params: messageIdSchema }) {}
