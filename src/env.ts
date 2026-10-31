@@ -1,6 +1,18 @@
+/**
+ * Module-level configuration. Only values needed before the IoC container
+ * exists live here (the listen port, the @Database decorator options, the
+ * middleware constructor options). Component configuration that can wait for
+ * the container — e.g. JWT_SECRET in AuthService — is injected with @Value.
+ */
+const trustedProxies = (process.env['TRUSTED_PROXIES'] ?? '')
+  .split(',')
+  .map((address) => address.trim())
+  .filter(Boolean);
+
 export const env = {
   port: Number(process.env['PORT'] ?? 3000),
-  jwtSecret: process.env['JWT_SECRET'] ?? 'dev-only-secret-change-me',
+  /** Reverse-proxy addresses whose X-Forwarded-For the rate limiter may believe. */
+  trustedProxies,
   database: {
     host: process.env['DB_HOST'] ?? 'localhost',
     port: Number(process.env['DB_PORT'] ?? 5432),

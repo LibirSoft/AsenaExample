@@ -7,8 +7,9 @@ import type { PublicUser } from '../services/UserService';
 import { AuthMiddleware } from '../middlewares/AuthMiddleware';
 import {
   CreateChatRoomValidator,
-  MessageIdValidator,
-  RoomIdValidator,
+  ListMessagesContext,
+  MessageIdContext,
+  RoomIdContext,
   SendMessageValidator,
   type CreateChatRoomDto,
   type CreateMessageDto,
@@ -35,34 +36,34 @@ export class ChatController {
     return context.send({ success: true, rooms: await this.chatService.getRooms() }, 200);
   }
 
-  @Get({ path: '/rooms/:id', validator: RoomIdValidator, description: 'Get a chat room (members only)' })
-  public async getRoom(context: Context) {
+  @Get({ path: '/rooms/:id', description: 'Get a chat room (members only)' })
+  public async getRoom(context: RoomIdContext) {
     const user = context.getValue<PublicUser>('user');
-    const room = await this.chatService.getRoom(user.id, Number(context.getParam('id')));
+    const room = await this.chatService.getRoom(user.id, context.input.params.id);
 
     return context.send({ success: true, room }, 200);
   }
 
-  @Delete({ path: '/rooms/:id', validator: RoomIdValidator, description: 'Delete a chat room (owner only)' })
-  public async deleteRoom(context: Context) {
+  @Delete({ path: '/rooms/:id', description: 'Delete a chat room (owner only)' })
+  public async deleteRoom(context: RoomIdContext) {
     const user = context.getValue<PublicUser>('user');
-    await this.chatService.deleteRoom(user.id, Number(context.getParam('id')));
+    await this.chatService.deleteRoom(user.id, context.input.params.id);
 
     return context.send({ success: true, message: 'Chat room deleted successfully' }, 200);
   }
 
-  @Post({ path: '/rooms/:id/join', validator: RoomIdValidator, description: 'Join a chat room' })
-  public async joinRoom(context: Context) {
+  @Post({ path: '/rooms/:id/join', description: 'Join a chat room' })
+  public async joinRoom(context: RoomIdContext) {
     const user = context.getValue<PublicUser>('user');
-    await this.chatService.joinRoom(user.id, Number(context.getParam('id')));
+    await this.chatService.joinRoom(user.id, context.input.params.id);
 
     return context.send({ success: true, message: 'Joined the chat room' }, 200);
   }
 
-  @Post({ path: '/rooms/:id/leave', validator: RoomIdValidator, description: 'Leave a chat room (not the owner)' })
-  public async leaveRoom(context: Context) {
+  @Post({ path: '/rooms/:id/leave', description: 'Leave a chat room (not the owner)' })
+  public async leaveRoom(context: RoomIdContext) {
     const user = context.getValue<PublicUser>('user');
-    await this.chatService.leaveRoom(user.id, Number(context.getParam('id')));
+    await this.chatService.leaveRoom(user.id, context.input.params.id);
 
     return context.send({ success: true, message: 'Left the chat room' }, 200);
   }
@@ -86,28 +87,27 @@ export class ChatController {
     return context.send({ success: true, message }, 201);
   }
 
-  @Get({ path: '/rooms/:id/messages', validator: RoomIdValidator, description: 'List the messages of a room (members only)' })
-  public async getMessages(context: Context) {
+  @Get({ path: '/rooms/:id/messages', description: 'List the messages of a room (members only)' })
+  public async getMessages(context: ListMessagesContext) {
     const user = context.getValue<PublicUser>('user');
-    const limitParam = await context.getQuery('limit');
-    const limit = limitParam ? Number(limitParam) : undefined;
-    const messages = await this.chatService.getMessages(user.id, Number(context.getParam('id')), limit);
+    const { params, query } = context.input;
+    const messages = await this.chatService.getMessages(user.id, params.id, query.limit);
 
     return context.send({ success: true, messages }, 200);
   }
 
-  @Post({ path: '/messages/:id/read', validator: MessageIdValidator, description: 'Mark a message as read' })
-  public async markAsRead(context: Context) {
+  @Post({ path: '/messages/:id/read', description: 'Mark a message as read' })
+  public async markAsRead(context: MessageIdContext) {
     const user = context.getValue<PublicUser>('user');
-    await this.chatService.markMessageAsRead(user.id, Number(context.getParam('id')));
+    await this.chatService.markMessageAsRead(user.id, context.input.params.id);
 
     return context.send({ success: true, message: 'Message marked as read' }, 200);
   }
 
-  @Delete({ path: '/messages/:id', validator: MessageIdValidator, description: 'Delete a message (sender only)' })
-  public async deleteMessage(context: Context) {
+  @Delete({ path: '/messages/:id', description: 'Delete a message (sender only)' })
+  public async deleteMessage(context: MessageIdContext) {
     const user = context.getValue<PublicUser>('user');
-    await this.chatService.deleteMessage(user.id, Number(context.getParam('id')));
+    await this.chatService.deleteMessage(user.id, context.input.params.id);
 
     return context.send({ success: true, message: 'Message deleted successfully' }, 200);
   }

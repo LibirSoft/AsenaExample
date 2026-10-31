@@ -1,9 +1,8 @@
 import { Service } from '@asenajs/asena/decorators';
-import { Inject } from '@asenajs/asena/decorators/ioc';
+import { Inject, Value } from '@asenajs/asena/decorators/ioc';
 import { HttpException } from '@asenajs/asena/adapter';
 import { Transaction } from '@asenajs/asena-drizzle';
 import { sign, verify } from 'hono/jwt';
-import { env } from '../env';
 import { UserService, type PublicUser, type UserRow } from './UserService';
 import { TodoService } from './TodoService';
 import { FileStorageService } from './FileStorageService';
@@ -28,6 +27,14 @@ export class AuthService {
 
   @Inject(FileStorageService)
   private fileStorageService!: FileStorageService;
+
+  /**
+   * Required configuration: with no default, an unset JWT_SECRET fails the
+   * boot with an error naming this field instead of signing tokens with a
+   * guessable fallback.
+   */
+  @Value('JWT_SECRET')
+  private jwtSecret!: string;
 
   /**
    * Creates the user and their welcome todo atomically. Both repository calls
@@ -93,7 +100,7 @@ export class AuthService {
 
   public async verifyToken(token: string): Promise<JwtPayload> {
     try {
-      return (await verify(token, env.jwtSecret, 'HS256')) as JwtPayload;
+      return (await verify(token, this.jwtSecret, 'HS256')) as JwtPayload;
     } catch {
       throw new HttpException(401, { success: false, message: 'Invalid or expired token' });
     }
@@ -106,6 +113,6 @@ export class AuthService {
       exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
     };
 
-    return sign(payload, env.jwtSecret, 'HS256');
+    return sign(payload, this.jwtSecret, 'HS256');
   }
 }

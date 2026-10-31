@@ -1,5 +1,5 @@
 import { Middleware } from '@asenajs/asena/decorators';
-import { ValidationService } from '@asenajs/hono-adapter';
+import { Context, ValidationService } from '@asenajs/hono-adapter';
 import { z } from 'zod';
 
 const createTodoSchema = z.object({
@@ -37,24 +37,17 @@ export class CreateTodoValidator extends ValidationService {
 }
 
 /**
- * A single validator can cover several request parts: the :id path parameter
- * and the JSON body of PUT /todos/:id are validated together.
+ * Route context contracts (Context.define): the handler takes the class as its
+ * first parameter and reads typed, validated values from context.input —
+ * `context.input.params.id` is already a number. Used where no response()
+ * schema is needed; routes documenting their responses keep a validator class.
+ *
+ * Controllers must import these as values (not `import type`), otherwise the
+ * decorator metadata is erased and the route silently runs unvalidated.
  */
-@Middleware({ validator: true })
-export class UpdateTodoValidator extends ValidationService {
-  public param() {
-    return todoIdSchema;
-  }
 
-  public json() {
-    return updateTodoSchema;
-  }
-}
+/** GET/DELETE /todos/:id */
+export class TodoIdContext extends Context.define({ params: todoIdSchema }) {}
 
-/** Validates the :id path parameter of GET/DELETE /todos/:id. */
-@Middleware({ validator: true })
-export class TodoIdValidator extends ValidationService {
-  public param() {
-    return todoIdSchema;
-  }
-}
+/** PUT /todos/:id — the :id parameter and the JSON body are validated together. */
+export class UpdateTodoContext extends Context.define({ params: todoIdSchema, body: updateTodoSchema }) {}

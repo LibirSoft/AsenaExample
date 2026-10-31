@@ -5,7 +5,7 @@ import { TodoController } from '../../src/controllers/TodoController';
 
 /**
  * Web-slice tests for the protected /todos controller — the controller-level
- * AuthMiddleware and every validator run for real.
+ * AuthMiddleware, every validator and every route context contract run for real.
  */
 const authHeaders = {
   headers: { authorization: 'Bearer valid-token', 'content-type': 'application/json' },
@@ -78,6 +78,23 @@ test('PUT /todos/:id passes the validated body to the service', async () => {
     .expectJsonContains({ isCompleted: true });
 
   expect(mocks.TodoService.updateTodo).toHaveBeenCalledWith(3, 7, { isCompleted: true });
+
+  await app.stop();
+});
+
+test('PUT /todos/:id hands the service only the contract output (unknown keys stripped)', async () => {
+  const [adapter] = createHonoAdapter({ logger: silentLogger });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [TodoController] });
+
+  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
+  mocks.TodoService.updateTodo.mockResolvedValue({ id: 3, title: 'Renamed', isCompleted: false });
+
+  // userId is not part of the update schema — a mass-assignment attempt.
+  await app
+    .put('/todos/3', { ...authHeaders, body: JSON.stringify({ title: 'Renamed', userId: 99 }) })
+    .expectStatus(200);
+
+  expect(mocks.TodoService.updateTodo).toHaveBeenCalledWith(3, 7, { title: 'Renamed' });
 
   await app.stop();
 });
