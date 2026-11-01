@@ -3,6 +3,7 @@ import * as Todo from './todo.schema';
 import * as ChatRoom from './chat-room.schema';
 import * as ChatRoomMember from './chat-room-member.schema';
 import * as Message from './message.schema';
+import * as Session from './session.schema';
 
 export default {
   ...User,
@@ -10,4 +11,5 @@ export default {
   ...ChatRoom,
   ...ChatRoomMember,
   ...Message,
+  ...Session,
 };

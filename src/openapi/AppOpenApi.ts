@@ -12,8 +12,9 @@ import { OpenApi, OpenApiPostProcessor } from '@asenajs/asena-openapi';
     title: 'Asena Example API',
     version: '1.0.0',
     description:
-      'A Todo application demonstrating AsenaJS best practices: IoC, Zod validation, ' +
-      'JWT auth, Drizzle repositories with transactions, file uploads, static serving and testing.',
+      'A Todo + Chat application demonstrating AsenaJS best practices: IoC, Zod validation, ' +
+      'session auth with @asenajs/asena-auth (Bearer token or HttpOnly cookie), Drizzle ' +
+      'repositories with transactions, file uploads, static serving, WebSockets and testing.',
   },
   path: '/openapi',
   ui: true,

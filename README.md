@@ -6,36 +6,49 @@ to Bun: TypeScript decorators for wiring, field-based dependency injection, and 
 binds directly to `Bun.serve()` through the Hono adapter.
 
 This repo is a **reference application**: every feature is implemented the way the framework
-recommends, so you can copy patterns directly into your own project — JWT authentication, Zod
-validation, OpenAPI docs generated from those same validators, PostgreSQL access through Drizzle
-with declarative transactions, file uploads, static serving, real-time chat over WebSockets with
-room-based pub/sub, and a three-level test suite.
+recommends, so you can copy patterns directly into your own project — session authentication with
+`@asenajs/asena-auth` (Bearer token or HttpOnly cookie, sessions stored in PostgreSQL), Zod
+validation and route context contracts, OpenAPI docs generated from those same schemas, PostgreSQL
+access through Drizzle with declarative transactions, file uploads, static serving, real-time chat
+over WebSockets with room-based pub/sub, and a three-level test suite.
 
-> Originally written against AsenaJS `0.1.x`, now on `@asenajs/asena` `0.12.x` +
-> `@asenajs/hono-adapter` `5.x`. Short migration notes are at the [end](#migration-notes).
+> Originally written against AsenaJS `0.1.x`, now on `@asenajs/asena` `0.12.3` +
+> `@asenajs/hono-adapter` `5.0.3` + `@asenajs/asena-auth` `1.0`. Short migration notes are at the
+> [end](#migration-notes).
 
 ## What the code looks like
 
-Controllers stay thin, services own the business logic, and wiring is done with decorators
-(no configuration files, no manual DI registration):
+Controllers stay thin, services own the business logic, wiring is done with decorators (no
+configuration files, no manual DI registration), and access control is a mark on the class:
 
 ```ts
+@Protected()                              // asena-auth's guard: 401 before anything else runs
 @Controller('/todos')
 export class TodoController {
   @Inject(TodoService)                    // field injection — never constructors
   private todoService!: TodoService;
 
-  @Post({ path: '/', validator: CreateTodoValidator })   // Zod validation middleware
-  public async create(context: Context) {
-    const dto = await context.getBody<CreateTodoDto>();  // already validated & typed
-    const todo = await this.todoService.createTodo(context.getValue<User>('user').id, dto);
-    return context.send({ success: true, todo }, 201);
+  @Put('/:id')
+  public async update(context: UpdateTodoContext) {   // route context contract
+    const { params, body } = context.input;           // validated & typed: { id: number }, { title?: string, … }
+    const user = currentUser(context);                // the session's user
+    return context.send(await this.todoService.updateTodo(params.id, user.id, body), 200);
   }
 }
 ```
 
-The same Zod schema that guards the request also feeds the **OpenAPI spec**, so docs and validation
-can never drift apart:
+Route context contracts are plain classes built with the adapter's `Context.define()` — the handler
+takes the contract as its first parameter and reads already-coerced values from `context.input`:
+
+```ts
+export class ListMessagesContext extends Context.define({
+  params: z.object({ id: z.coerce.number().int().positive() }),
+  query: z.object({ limit: z.coerce.number().int().positive().optional() }),
+}) {}
+```
+
+Routes that document their responses keep a validator class — the same Zod schema that guards the
+request also feeds the **OpenAPI spec**, so docs and validation can never drift apart:
 
 ```ts
 @Middleware({ validator: true })
@@ -50,7 +63,23 @@ export class SignupValidator extends ValidationService {
 }
 ```
 
-And cross-cutting database work is declarative — `@Transaction()` propagates through
+Authentication is one provider class. Its sessions are opaque tokens (only their SHA-256 is stored),
+so they can be listed and revoked server-side — and they live in PostgreSQL through a custom store:
+
+```ts
+@Auth({ sessionTtl: env.sessionTtl, hashing: { algorithm: 'argon2id' }, csrf: { trustedOrigins } })
+export class AppAuth extends AsenaAuthService<AppUser> {
+  @Inject('SessionRepository')
+  private sessionRepository!: SessionRepository;
+
+  public override async onStart(): Promise<void> {
+    this.setStore(new DrizzleSessionStore(this.sessionRepository));  // before super.onStart()
+    await super.onStart();
+  }
+}
+```
+
+Cross-cutting database work is declarative — `@Transaction()` propagates through
 `AsyncLocalStorage`, so every repository call inside `signup()` joins one atomic transaction
 (user + welcome todo) without passing a `tx` handle around:
 
@@ -59,29 +88,12 @@ And cross-cutting database work is declarative — `@Transaction()` propagates t
 public async signup(dto: SignupDto): Promise<PublicUser> { /* ... */ }
 ```
 
-Routes that only need typed parameters use a **route context contract** instead of a validator
-class — the handler takes the contract as its first parameter and reads already-coerced values
-from `context.input`:
+And configuration is injected the same way as collaborators — `@Value` reads `process.env` when the
+container builds the component:
 
 ```ts
-export class ListMessagesContext extends Context.define({
-  params: z.object({ id: z.coerce.number().int().positive() }),
-  query: z.object({ limit: z.coerce.number().int().positive().optional() }),
-}) {}
-
-@Get('/rooms/:id/messages')
-public async getMessages(context: ListMessagesContext) {
-  const { params, query } = context.input;          // { id: number }, { limit?: number }
-  // ...
-}
-```
-
-Configuration is injected the same way as collaborators — `@Value` reads `process.env` when the
-container builds the component, and a required value that is missing stops the boot:
-
-```ts
-@Value('JWT_SECRET')          // no default → the server refuses to start without it
-private jwtSecret!: string;
+@Value('CHAT_MAX_PAGE_SIZE', { parse: Number, default: 100 })
+private maxPageSize!: number;
 ```
 
 ## Architecture
@@ -90,12 +102,12 @@ private jwtSecret!: string;
             HTTP request
                  │
    ┌─────────────▼──────────────┐
-   │  Middleware chain           │  GlobalCors → AuthRateLimiter / AuthMiddleware → Validator / contract
+   │  Request pipeline           │  GlobalCors → auth guard (@Protected) → AuthRateLimiter → validator / contract
    └─────────────┬──────────────┘
    ┌─────────────▼──────────────┐
    │  Controller (thin)         │  parse request · call service · shape response
    ├────────────────────────────┤
-   │  Service (business logic)  │  invariants live here: ownership, duplicates, auth
+   │  Service (business logic)  │  invariants live here: ownership, duplicates, session rules
    ├────────────────────────────┤
    │  Repository (data access)  │  one per domain, injected only into its own service
    ├────────────────────────────┤
@@ -103,30 +115,36 @@ private jwtSecret!: string;
    └────────────────────────────┘
 ```
 
+The pipeline order is fixed on both adapters: global middlewares → controller middlewares → **auth
+guard** → route middlewares → validation → handler. An anonymous request to a protected route is a
+`401` even when its body is invalid — it never reaches validation or the handler.
+
 Layering rules enforced throughout:
 
 - Controllers never touch repositories or business rules.
 - A repository is injected **only** into its own domain service; cross-domain access goes through
-  the owning service (e.g. `AuthService` calls `UserService`, never `UserRepository`).
+  the owning service (e.g. `AuthService` calls `UserService`, never `UserRepository`). The
+  `SessionRepository` belongs to the `AppAuth` provider.
 - Validators and route contracts check request *shape*; services check *meaning*.
 
 ## Features
 
 | Area | What is demonstrated | Where |
 |---|---|---|
-| Bootstrap | `AsenaServerFactory` + `createHonoAdapter` (tuple form) + `AsenaLogger` | `src/index.ts` |
+| Bootstrap | `AsenaServerFactory` + `createHonoAdapter` (tuple form) + `AsenaLogger`, package components via `imports` | `src/index.ts` |
 | IoC | Field-based `@Inject`, `@Value` configuration injection, `@OnStart` lifecycle, layered architecture | everywhere |
-| Validation | Zod 4 validator classes (`json()`, `form()`, `param()`) read via `getBody()` / `getParseBody()`, plus `Context.define()` route contracts with typed `context.input` | `src/validators/` |
+| Validation | `Context.define()` route contracts with typed `context.input`, plus Zod validator classes (`json()`, `form()`, `param()`) where responses are documented | `src/validators/` |
 | OpenAPI 3.1 | Spec generated **from the validators and route contracts**, Swagger UI, `@Hidden` routes, response schemas | `src/openapi/AppOpenApi.ts` |
-| Auth | JWT bearer tokens (`hono/jwt`, 12h), Argon2id hashing (`Bun.password`), token → live-user lookup | `src/services/AuthService.ts` |
+| Auth | `@asenajs/asena-auth`: `@Auth` provider, `@Protected` routes, Bearer **or** HttpOnly cookie, CSRF check for cookies, Argon2id hashing, logout / session list / revoke / logout-all | `src/auth/`, `src/controllers/AuthController.ts` |
+| Sessions | Custom `AuthSessionStore` over Drizzle — sessions survive restarts and are shared across instances; deleting a user cascades to their sessions | `src/auth/DrizzleSessionStore.ts` |
 | Middleware | Global/controller/route levels, adapter built-ins subclassed (CORS, proxy-aware rate limiter) | `src/middlewares/` |
 | Database | `@Database` (bun-sql driver), `@Repository` + `BaseRepository`, migrations auto-applied on boot | `src/database/`, `src/repositories/` |
 | Transactions | `@Transaction()` via `AsyncLocalStorage` — signup creates user + welcome todo atomically | `src/services/AuthService.ts` |
-| File upload | Multipart signup with optional profile image (`z.file()`), safe generated file names | `src/services/FileStorageService.ts` |
+| File upload | Multipart signup with a profile image (`z.file()`), safe generated file names | `src/services/FileStorageService.ts` |
 | Static files | `@StaticServe` serving `public/` under `/static` | `src/statics/PublicStaticServe.ts` |
-| Errors | Central `onError`/`onNotFound`, `HttpException`, `isValidationError()` before `isHttpException()` | `src/config/AppConfig.ts` |
-| WebSocket | Real-time chat: authenticated namespace, room pub/sub, membership enforced by the service layer | `src/websockets/ChatWebSocket.ts` |
-| Testing | `mockComponent` (unit), `createWebTest` (web slice), `createTestApp` (e2e) — no DB needed | `tests/` |
+| Errors | Central `onError`/`onNotFound`, `HttpException`, `isValidationError()` before `isHttpException()`, one JSON envelope (the guard's 401/403 included) | `src/config/AppConfig.ts` |
+| WebSocket | Real-time chat: `AuthWebSocketMiddleware` on the namespace, room pub/sub, membership enforced by the service layer | `src/websockets/ChatWebSocket.ts` |
+| Testing | `mockComponent` (unit), `createWebTest` + `TestAuthProvider` (web slice), `createTestApp` (e2e) — no DB needed | `tests/` |
 
 ## Requirements
 
@@ -144,12 +162,10 @@ docker run -d --name asena-postgres \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=asena_example \
   -p 5432:5432 postgres:16
 
-# 3. configure the app — required: JWT_SECRET has no default, and without it the
-#    boot stops with "@Value('JWT_SECRET') on AuthService.jwtSecret: environment
-#    variable is not set and no default was given"
+# 3. configure the app — every variable has a working local default
 cp .env.example .env
 
-# 4. run — pending Drizzle migrations are applied automatically on boot
+# 4. run — pending Drizzle migrations (sessions table included) are applied on boot
 bun run dev
 ```
 
@@ -162,84 +178,136 @@ The API is now at `http://localhost:3000`:
 ### Try it
 
 ```bash
-# sign up (multipart — profile image optional)
+# sign up (multipart, with a profile image)
 curl -F userName=jane -F firstName=Jane -F lastName=Doe -F age=30 \
      -F password=supersecret -F file=@avatar.png localhost:3000/auth/signup
 
-# log in
+# log in — API clients use the token as a Bearer header ...
 TOKEN=$(curl -s -H 'content-type: application/json' \
   -d '{"userName":"jane","password":"supersecret"}' localhost:3000/auth/login | jq -r .token)
 
-# work with todos
 curl -H "authorization: Bearer $TOKEN" localhost:3000/todos
 curl -X POST -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"title":"Buy milk"}' localhost:3000/todos
+
+# ... browsers get the same session as the HttpOnly asena_session cookie
+curl -c jar.txt -H 'content-type: application/json' \
+  -d '{"userName":"jane","password":"supersecret"}' localhost:3000/auth/login
+curl -b jar.txt localhost:3000/auth/me
+
+# signed-in devices, and ending sessions
+curl -H "authorization: Bearer $TOKEN" localhost:3000/auth/sessions
+curl -X POST -H "authorization: Bearer $TOKEN" localhost:3000/auth/logout
+curl -H "authorization: Bearer $TOKEN" localhost:3000/auth/me     # → 401, revoked server-side
 ```
 
 ## Project structure
 
 ```
 src/
-├─ index.ts                     # AsenaServerFactory + createHonoAdapter bootstrap
-├─ env.ts                       # module-level config (port, DB, proxies); the rest uses @Value
+├─ index.ts                     # AsenaServerFactory + createHonoAdapter + imports: [...authComponents]
+├─ env.ts                       # module-level config (port, DB, origins, session TTL, proxies)
+├─ auth/
+│  ├─ AppAuth.ts                # @Auth provider — sessions, hashing, cookie + CSRF options
+│  ├─ DrizzleSessionStore.ts    # AuthSessionStore over SessionRepository (PostgreSQL)
+│  └─ currentUser.ts            # the session user with its numeric database id
 ├─ config/
 │  ├─ AppConfig.ts              # @Config: global CORS, onError / onNotFound error model
 │  └─ AppDrizzle.ts             # @Drizzle post-processor enabling @Transaction
 ├─ database/
-│  ├─ schemas/                  # Drizzle table definitions (users, todos)
+│  ├─ schemas/                  # Drizzle tables (users, todos, chat, sessions) + bun-sql jsonb column
 │  ├─ MainDatabase.ts           # @Database (bun-sql) — pool managed by the framework
 │  └─ MigrateService.ts         # applies ./drizzle migrations on @OnStart
 ├─ repositories/                # @Repository + BaseRepository, one per domain
 ├─ services/                    # business logic; services own the invariants
-├─ middlewares/                 # AuthMiddleware, WSAuthMiddleware, GlobalCors, AuthRateLimiter
+├─ middlewares/                 # GlobalCors, AuthRateLimiter (adapter built-ins, subclassed)
 ├─ validators/                  # Zod validators + Context.define() contracts — validate AND feed OpenAPI
 ├─ controllers/                 # thin HTTP layer only
 ├─ statics/                     # @StaticServe for public/
 ├─ websockets/                  # @WebSocket namespaces (chat, public notifications)
-├─ openapi/AppOpenApi.ts        # @OpenApi({ ui: true })
-└─ types/asena-variables.d.ts   # typed context.getValue('user')
+└─ openapi/AppOpenApi.ts        # @OpenApi({ ui: true })
 ```
 
 ## API overview
 
+"Session" means either `Authorization: Bearer <token>` or the `asena_session` cookie set by
+`/auth/login`. A Bearer header wins when both are present.
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auth/signup` | — | Multipart signup with optional profile image |
-| `POST` | `/auth/login` | — | Returns a JWT bearer token (12h) |
-| `GET` | `/auth/me` | Bearer | Current user |
-| `GET` | `/todos` | Bearer | List the user's todos |
-| `POST` | `/todos` | Bearer | Create a todo |
-| `GET` | `/todos/:id` | Bearer | Get one todo (ownership enforced → 404) |
-| `PUT` | `/todos/:id` | Bearer | Partial update |
-| `DELETE` | `/todos/:id` | Bearer | Delete |
+| `POST` | `/auth/signup` | — | Multipart signup with a profile image (rate limited) |
+| `POST` | `/auth/login` | — | Opens a session: token in the body + HttpOnly cookie (rate limited) |
+| `GET` | `/auth/me` | Session | Current user (live data, not the session snapshot) |
+| `POST` | `/auth/logout` | Session | Ends the current session and clears the cookie |
+| `GET` | `/auth/sessions` | Session | The user's active sessions, the current one flagged |
+| `DELETE` | `/auth/sessions/:id` | Session | Revokes one of the user's own sessions (others → 404) |
+| `POST` | `/auth/logout-all` | Session | Ends every session of the user |
+| `GET` | `/todos` | Session | List the user's todos |
+| `POST` | `/todos` | Session | Create a todo |
+| `GET` | `/todos/:id` | Session | Get one todo (ownership enforced → 404) |
+| `PUT` | `/todos/:id` | Session | Partial update |
+| `DELETE` | `/todos/:id` | Session | Delete |
 | `GET` | `/static/*` | — | Static files (profile uploads) |
-| `POST` | `/chat/rooms` | Bearer | Create a chat room (creator becomes owner + member) |
-| `GET` | `/chat/rooms` | Bearer | List all rooms (content requires membership) |
-| `GET` | `/chat/rooms/:id` | Bearer | Room detail (members only → 403) |
-| `DELETE` | `/chat/rooms/:id` | Bearer | Delete a room, messages follow via cascade (owner only) |
-| `POST` | `/chat/rooms/:id/join` | Bearer | Join a room (open, idempotent) |
-| `POST` | `/chat/rooms/:id/leave` | Bearer | Leave a room (members; the owner must delete instead) |
-| `GET` | `/chat/rooms/:id/messages` | Bearer | Room messages, newest first, `?limit=` (positive integer, capped at 100; non-numeric or ≤ 0 is `400`) (members only) |
-| `POST` | `/chat/rooms/:id/messages` | Bearer | Send a message (members only) |
-| `POST` | `/chat/messages/:id/read` | Bearer | Mark a message as read |
-| `DELETE` | `/chat/messages/:id` | Bearer | Delete a message (sender only) |
-| `WS` | `/chat-room` | `?token=` | Real-time chat (see below) |
+| `POST` | `/chat/rooms` | Session | Create a chat room (creator becomes owner + member) |
+| `GET` | `/chat/rooms` | Session | List all rooms (content requires membership) |
+| `GET` | `/chat/rooms/:id` | Session | Room detail (members only → 403) |
+| `DELETE` | `/chat/rooms/:id` | Session | Delete a room, messages follow via cascade (owner only) |
+| `POST` | `/chat/rooms/:id/join` | Session | Join a room (open, idempotent) |
+| `POST` | `/chat/rooms/:id/leave` | Session | Leave a room (members; the owner must delete instead) |
+| `GET` | `/chat/rooms/:id/messages` | Session | Room messages, newest first, `?limit=` (positive integer, capped at `CHAT_MAX_PAGE_SIZE`; non-numeric or ≤ 0 is `400`) (members only) |
+| `POST` | `/chat/rooms/:id/messages` | Session | Send a message (members only) |
+| `POST` | `/chat/messages/:id/read` | Session | Mark a message as read |
+| `DELETE` | `/chat/messages/:id` | Session | Delete a message (sender only) |
+| `WS` | `/chat-room` | Session (`bearer` subprotocol, header or cookie) | Real-time chat (see below) |
 | `WS` | `/notifications` | — | Public notification channels demo |
 | `GET` | `/openapi`, `/openapi/ui` | — | Generated spec + Swagger UI |
 | `GET` | `/health` | — | Health check (hidden from the spec) |
 
 Every response uses the same envelope: `{ success: true, ...data }` or
 `{ success: false, message, errors? }`. Validation failures return a structured `400` with
-per-field details, domain errors (`HttpException`) keep their status (401/403/404/409), and unmatched
-routes hit the custom `onNotFound` handler.
+per-field details, domain errors (`HttpException`) keep their status (401/403/404/409), the auth
+guard's plain `401`/`403` are wrapped into the envelope (keeping `WWW-Authenticate: Bearer`), and
+unmatched routes hit the custom `onNotFound` handler.
+
+## Authentication
+
+Auth is `@asenajs/asena-auth` with its native provider (`src/auth/AppAuth.ts`):
+
+- **One session, two transports.** `/auth/login` returns the token in the body (for
+  `Authorization: Bearer` clients) and writes it as the `asena_session` cookie (`HttpOnly`,
+  `Secure`, `SameSite=Lax`) through `applySessionCookie()`. Chromium and Firefox treat
+  `http://localhost` as a secure context and keep a `Secure` cookie there; elsewhere serve HTTPS.
+- **Opaque, revocable tokens.** A token is 32 random bytes; only its SHA-256 is stored. Logout,
+  "sign out this device" and "sign out everywhere" take effect on the very next request — a stateless
+  JWT cannot do that. Sessions slide (extended once less than half of `SESSION_TTL` is left) up to
+  a hard 30-day cap.
+- **Sessions in PostgreSQL.** The default `MemoryAuthStore` is per process — every restart (and every
+  `--hot` reload) would log everyone out. `DrizzleSessionStore` implements `AuthSessionStore` over
+  the `sessions` table; `AppAuth` sets it in `onStart()` because the store needs an injected
+  repository. `sessions.user_id` cascades, so deleting a user ends their sessions immediately.
+- **Guards, not middleware.** `@Protected()` on a controller (or a method) only records metadata;
+  the `AuthGuard` from `imports: [...authComponents]` in `src/index.ts` enforces it. Without that
+  import every route would silently stay public — `asena doctor`'s `auth-enforcement` check catches it.
+- **CSRF.** A cookie sent cross-site on a state-changing request counts as no session. The SPA
+  origins from `ALLOWED_ORIGINS` (also the CORS allow-list) are trusted. Bearer tokens are exempt.
+- **Untrusted ids.** `DELETE /auth/sessions/:id` checks ownership in `AuthService` first —
+  `revokeSessionById()` would end any session it is given.
 
 ## WebSocket chat
 
-The REST API above is mirrored by a real-time namespace at `/chat-room`. The handshake is
-authenticated by `WSAuthMiddleware` — browsers cannot set headers on an upgrade request, so the
-bearer token travels as a query parameter (`wss://…/chat-room?token=<jwt>`). Every membership rule
-the REST layer enforces is enforced here too: `join` registers the membership, and `message` from a
-non-member is rejected by `ChatService` and relayed back as an `error` event.
+The REST API above is mirrored by a real-time namespace at `/chat-room`. `@Protected` does not apply
+to sockets, so the namespace lists asena-auth's `AuthWebSocketMiddleware`: it resolves the same
+session as the REST API and answers `401` before the upgrade when there is none. Browsers cannot set
+headers on a WebSocket, so they send the token as a subprotocol pair:
+
+```js
+const socket = new WebSocket('wss://api.example.com/chat-room', ['bearer', token]);
+```
+
+Server-side clients may send `Authorization: Bearer` instead; a same-origin page may rely on the
+cookie. Every membership rule the REST layer enforces is enforced here too: `join` registers the
+membership, and `message` from a non-member is rejected by `ChatService` and relayed back as an
+`error` event.
 
 Client → server messages:
 
@@ -254,8 +322,8 @@ Server → client events: `connected`, `joined`, `left`, `message` (with `messag
 `typing`, `error`. Try it with two terminals:
 
 ```bash
-TOKEN=<jwt from /auth/login>
-wscat -c "ws://localhost:3000/chat-room?token=$TOKEN"
+TOKEN=<token from /auth/login>
+wscat -c ws://localhost:3000/chat-room -H "authorization: Bearer $TOKEN"
 > {"type":"join","roomId":1}
 > {"type":"message","roomId":1,"content":"hello"}
 ```
@@ -271,23 +339,31 @@ Drizzle repositories with in-memory doubles via `overrides`.
 | Level | Utility | Boots | Files |
 |---|---|---|---|
 | Unit | `mockComponent` | Nothing — dependencies auto-mocked | `tests/unit/` |
-| Web slice | `createWebTest` | Real controllers, validators, route contracts, middleware | `tests/web/` |
-| Full app | `createTestApp` | Whole IoC container + real HTTP server | `tests/e2e/` |
+| Web slice | `createWebTest` + `TestAuthProvider` | Real controllers, auth guard, validators, route contracts, middleware | `tests/web/` |
+| Full app | `createTestApp` | Whole IoC container + real HTTP server + real asena-auth stack | `tests/e2e/` |
 
 ```bash
-bun test          # 71 tests across 8 files
+bun test          # 93 tests across 9 files
 ```
 
 Notable details worth copying into your own project:
 
-- unit tests configure explicit doubles for name-injected repositories (`overrides` keyed by field name),
-  and pin `@Value` fields the same way (`overrides: { jwtSecret: ... }`),
-- `bun test` loads `.env.test` automatically, which supplies the required `JWT_SECRET` for the
-  e2e suite,
-- the e2e harness lists only the roots — `createTestApp` follows every `@Inject(Class)` and
-  registers the services behind them; components referenced only from decorator options
-  (middlewares, validators, static serve) are still listed explicitly,
-- web tests assert both the routing (`200`) and the rejection paths (`400` validation, `401` auth),
+- web tests authenticate with `@TestAuth` from `@asenajs/asena-auth/testing`
+  (`tests/support/testAuth.ts`): an `x-test-user` header names the session user — no login, no
+  store — while the real guard still answers `401` without it. `createWebTest` has no `imports`,
+  so `authComponents` go into `components`,
+- an auto-mocked provider has no getters, so the `AuthController` slice passes a small `AppAuth`
+  stub (`cookieName`, `cookieOptions`, `logout`) through `overrides` and asserts the `Set-Cookie`,
+- unit tests get the provider auto-mocked too (`mocks.auth.createSession` …), configure explicit
+  doubles for name-injected repositories, and pin `@Value` fields the same way
+  (`overrides: { maxPageSize: 10 }`),
+- the e2e harness lists only the roots — `createTestApp` follows every `@Inject(Class)` (the
+  `AppAuth` provider included); package components come in through `imports: [...authComponents]`
+  exactly as in `src/index.ts`,
+- the e2e suite runs the real `AppAuth` + `DrizzleSessionStore` over a repository double and covers
+  the whole session lifecycle: only the token hash is stored, cookie login, the CSRF check, session
+  listing, revoking another device, the `404` for someone else's session, logout and logout-all,
+  plus the WebSocket handshake with and without the `bearer` subprotocol token,
 - the e2e test boots the real OpenAPI post-processor and asserts `@Hidden` routes stay out of the spec,
 - the chat e2e flow covers the membership lifecycle end to end: non-member `403`s, idempotent join,
   ownership rules and cascade deletion.
@@ -295,13 +371,15 @@ Notable details worth copying into your own project:
 ## Configuration
 
 All configuration comes from `process.env` (Bun loads `.env` automatically) — see `.env.example`.
-Values needed before the container exists live in `src/env.ts`; component configuration is
-injected with `@Value`:
+Values needed before the container exists (decorator and middleware-constructor options) live in
+`src/env.ts`; component configuration is injected with `@Value`:
 
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | HTTP port |
-| `JWT_SECRET` | — (**required**) | JWT signing secret, injected into `AuthService` with `@Value`; the server refuses to boot without it |
+| `ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Browser origins allowed to call the API with credentials — the CORS allow-list **and** the trusted origins of the session cookie's CSRF check |
+| `SESSION_TTL` | `43200` (12 h) | Session lifetime in seconds (sliding; hard cap 30 days) |
+| `CHAT_MAX_PAGE_SIZE` | `100` | Upper bound for `?limit=` on room messages, injected into `ChatService` with `@Value` |
 | `TRUSTED_PROXIES` | empty | Comma-separated reverse-proxy addresses. The auth rate limiter keys clients by peer address and only believes `X-Forwarded-For` from these — set it when running behind a proxy, or every client shares one bucket |
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` | PostgreSQL address |
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `asena_example` / `postgres` / `postgres` | Credentials |
@@ -322,21 +400,52 @@ injected with `@Value`:
 
 ```bash
 bun run build        # bundle to dist/index.asena.js
-JWT_SECRET=<long-random-secret> bun dist/index.asena.js
+ALLOWED_ORIGINS=https://app.example.com bun dist/index.asena.js
 ```
 
-Set `TRUSTED_PROXIES` when the app runs behind a reverse proxy (see [Configuration](#configuration)),
-and run `bunx asena doctor` in CI — it catches duplicate core copies, missing decorator flags and
-unsafe build settings.
+- Serve over HTTPS — the session cookie is `Secure`.
+- Set `ALLOWED_ORIGINS` to the public `https://` origins of your frontends. Behind a TLS-terminating
+  proxy the app sees `http://` request URLs; browsers that send `Sec-Fetch-Site` pass on that
+  alone, the rest are matched against this list (`X-Forwarded-*` headers are not read).
+- Set `TRUSTED_PROXIES` when the app runs behind a reverse proxy (see [Configuration](#configuration)).
+- Sessions are in PostgreSQL, so any number of instances can run side by side.
+- Run `bunx asena doctor` in CI — it catches duplicate core copies, missing decorator flags, unsafe
+  build settings, `@Protected` marks without a guard and browser-rejected cookie options.
 
 ## Migration notes
+
+### 0.12.1 → asena-auth 1.0 (core 0.12.3)
+
+- **Packages**: `@asenajs/asena` `0.12.3`, `hono-adapter` `5.0.3`, `asena-cli` `0.12`, new
+  `@asenajs/asena-auth` `1.0`. CLI 0.12 no longer depends on core, so the `overrides` entry that
+  pinned the CLI's own core copy is gone — `asena doctor` still reports a single core.
+- **Auth**: hand-written JWT (`hono/jwt`, `AuthMiddleware`, `JWT_SECRET`) → the `AppAuth` native
+  provider. `@Protected()` replaces `middlewares: [AuthMiddleware]`; handlers read the user with
+  `currentUser(context)` (core's `requireAuthSession`) instead of `context.getValue('user')`, so the
+  `AsenaVariables` augmentation is gone. Tokens are opaque and revocable; new logout, session list,
+  revoke and logout-all endpoints. `JWT_SECRET` is no longer needed.
+- **Passwords**: hashed and verified through the provider (`hashing: { algorithm: 'argon2id' }`);
+  existing Argon2id hashes keep verifying unchanged.
+- **Sessions table**: migration `0002_auth_sessions` adds `sessions` (token hash, user FK with
+  cascade, jsonb user snapshot). Drizzle's built-in `jsonb()` double-encodes on the bun-sql driver,
+  so the column uses a pass-through `jsonb` type (`src/database/schemas/columns.ts`).
+- **WebSocket**: `WSAuthMiddleware` + `?token=` (tokens in URLs end up in access logs) →
+  `AuthWebSocketMiddleware` with the `bearer` subprotocol, a header or the cookie.
+- **Rate limiting**: `AuthRateLimiter` moved from the whole `/auth` controller to the credential
+  routes (`signup`, `login`) — session management calls no longer spend the brute-force budget.
+- **CORS**: the origin list moved to `ALLOWED_ORIGINS`, shared with the cookie's CSRF check.
+- **Errors**: `onError` wraps plain-text `HttpException`s (the guard's `401`/`403`) into the JSON
+  envelope and keeps their headers.
+- **Tests**: web slices authenticate with `TestAuthProvider`; e2e imports `authComponents` and
+  overrides `SessionRepository`. `.env.test` now pins `ALLOWED_ORIGINS`, `SESSION_TTL` and
+  `CHAT_MAX_PAGE_SIZE`, so a local `.env` cannot change test outcomes.
 
 ### 0.10 → 0.12
 
 - **Packages**: `@asenajs/asena` `0.12.1`, `hono-adapter` `5.x`, `asena-drizzle` `4.x`,
   `asena-logger` `3.x`, `asena-openapi` `3.x`, `asena-cli` `0.11`; Bun `>= 1.4`. An `overrides`
-  entry in `package.json` pins the CLI's own `@asenajs/asena` dependency to the app's copy so
-  only one core is installed (`asena doctor` checks this).
+  entry in `package.json` pinned the CLI's own `@asenajs/asena` dependency to the app's copy so
+  only one core was installed (`asena doctor` checks this).
 - **Build**: `asena-config.ts` keeps identifier minification off — component names are read at
   runtime and do not survive it.
 - **Validation**: `id`-only validator classes became `Context.define()` route contracts; the

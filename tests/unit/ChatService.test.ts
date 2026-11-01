@@ -150,12 +150,21 @@ describe('ChatService', () => {
     expect(chatRepository.markMessageAsRead).not.toHaveBeenCalled();
   });
 
-  test('getMessages clamps the page size to 100', async () => {
+  test('getMessages clamps the page size to the CHAT_MAX_PAGE_SIZE default (100)', async () => {
     const chatRepository = createChatRepositoryDouble();
     const { instance } = mockComponent(ChatService, { overrides: { chatRepository } });
 
     await instance.getMessages(7, 1, 5000);
 
     expect(chatRepository.findMessagesByRoomId).toHaveBeenCalledWith(1, 100);
+  });
+
+  test('a @Value field is pinned through overrides like any other field', async () => {
+    const chatRepository = createChatRepositoryDouble();
+    const { instance } = mockComponent(ChatService, { overrides: { chatRepository, maxPageSize: 10 } });
+
+    await instance.getMessages(7, 1, 5000);
+
+    expect(chatRepository.findMessagesByRoomId).toHaveBeenCalledWith(1, 10);
   });
 });
