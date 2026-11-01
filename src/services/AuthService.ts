@@ -3,6 +3,7 @@ import { Inject } from '@asenajs/asena/decorators/ioc';
 import { HttpException } from '@asenajs/asena/adapter';
 import { Transaction } from '@asenajs/asena-drizzle';
 import { AppAuth } from '../auth/AppAuth';
+import type { UserRole } from '../database/schemas/user.schema';
 import { UserService, type PublicUser } from './UserService';
 import { TodoService } from './TodoService';
 import { FileStorageService } from './FileStorageService';
@@ -81,8 +82,12 @@ export class AuthService {
       throw new HttpException(401, { success: false, message: 'Invalid credentials' });
     }
 
-    // The session stores a small, plain snapshot; handlers read it on every request.
-    const { token } = await this.auth.createSession({ id: String(user.id), userName: user.userName });
+    // The session stores a small, plain snapshot; handlers and @Roles guards read it on every request.
+    const { token } = await this.auth.createSession({
+      id: String(user.id),
+      userName: user.userName,
+      roles: [user.role],
+    });
 
     return { token, user: this.userService.toPublicUser(user) };
   }
@@ -125,6 +130,26 @@ export class AuthService {
     }
 
     await this.auth.revokeSessionById(sessionId);
+  }
+
+  /**
+   * Changes a user's role and ends all of their sessions. Sessions hold a
+   * snapshot of the roles taken at login, so without the revocation a demoted
+   * admin would keep admin rights until their sessions expired. Both writes
+   * join one transaction: SessionRepository picks up the active transaction
+   * through AsyncLocalStorage like every other repository.
+   */
+  @Transaction()
+  public async changeRole(adminId: number, userId: number, role: UserRole): Promise<PublicUser> {
+    // Keeps at least the acting admin in place — nobody can lock themselves out.
+    if (adminId === userId) {
+      throw new HttpException(403, { success: false, message: 'Admins cannot change their own role' });
+    }
+
+    const user = await this.userService.changeRole(userId, role);
+    await this.auth.revokeUserSessions(String(userId));
+
+    return user;
   }
 
   /** Signs the user out everywhere — every device, the current one included. */

@@ -11,7 +11,7 @@ import type { SessionRepository } from '../../src/repositories/SessionRepository
 const row = {
   id: 'a'.repeat(64),
   userId: 5,
-  user: { id: '5', userName: 'jane' },
+  user: { id: '5', userName: 'jane', roles: ['user'] },
   createdAt: new Date(1_000),
   expiresAt: new Date(2_000),
 };
@@ -19,7 +19,7 @@ const row = {
 const stored = {
   id: 'a'.repeat(64),
   userId: '5',
-  user: { id: '5', userName: 'jane' },
+  user: { id: '5', userName: 'jane', roles: ['user'] },
   createdAt: 1_000,
   expiresAt: 2_000,
 };

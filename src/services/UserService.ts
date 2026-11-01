@@ -2,7 +2,7 @@ import { Service } from '@asenajs/asena/decorators';
 import { Inject } from '@asenajs/asena/decorators/ioc';
 import { HttpException } from '@asenajs/asena/adapter';
 import { UserRepository } from '../repositories/UserRepository';
-import { users } from '../database/schemas/user.schema';
+import { users, type UserRole } from '../database/schemas/user.schema';
 
 export type UserRow = typeof users.$inferSelect;
 export type PublicUser = Omit<UserRow, 'passwordHash'>;
@@ -33,6 +33,20 @@ export class UserService {
     }
 
     return this.toPublicUser(await this.userRepository.create(data));
+  }
+
+  public async listUsers(): Promise<PublicUser[]> {
+    return (await this.userRepository.findAll()).map((user) => this.toPublicUser(user));
+  }
+
+  public async changeRole(userId: number, role: UserRole): Promise<PublicUser> {
+    const user = await this.userRepository.updateById(userId, { role });
+
+    if (!user) {
+      throw new HttpException(404, { success: false, message: `User ${userId} not found` });
+    }
+
+    return this.toPublicUser(user);
   }
 
   public toPublicUser(user: UserRow): PublicUser {

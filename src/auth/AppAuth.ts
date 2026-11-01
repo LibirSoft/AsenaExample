@@ -7,11 +7,16 @@ import { DrizzleSessionStore } from './DrizzleSessionStore';
 
 /**
  * The user snapshot stored in a session. asena-auth ids are strings; handlers
- * read the numeric database id through currentUser().
+ * read the numeric database id through currentUser(). `roles` is what
+ * @Roles(...) guards check — the default resolver reads it as-is.
+ *
+ * A snapshot is taken at login: a role change does not reach existing
+ * sessions, which is why AuthService.changeRole() revokes them.
  */
 export interface AppUser extends AuthUser {
   id: string;
   userName: string;
+  roles: string[];
 }
 
 /**

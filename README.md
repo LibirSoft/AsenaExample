@@ -7,7 +7,8 @@ binds directly to `Bun.serve()` through the Hono adapter.
 
 This repo is a **reference application**: every feature is implemented the way the framework
 recommends, so you can copy patterns directly into your own project — session authentication with
-`@asenajs/asena-auth` (Bearer token or HttpOnly cookie, sessions stored in PostgreSQL), Zod
+`@asenajs/asena-auth` (Bearer token or HttpOnly cookie, sessions stored in PostgreSQL, role-based
+`@Roles` guards), Zod
 validation and route context contracts, OpenAPI docs generated from those same schemas, PostgreSQL
 access through Drizzle with declarative transactions, file uploads, static serving, real-time chat
 over WebSockets with room-based pub/sub, and a three-level test suite.
@@ -79,6 +80,15 @@ export class AppAuth extends AsenaAuthService<AppUser> {
 }
 ```
 
+Role checks are a mark too — `@Roles(...)` implies `@Protected()`: no session is a `401`, a
+session without the role a `403`, both before validation or the handler run:
+
+```ts
+@Roles('admin')
+@Controller('/admin')
+export class AdminController { /* GET /admin/users, PUT /admin/users/:id/role */ }
+```
+
 Cross-cutting database work is declarative — `@Transaction()` propagates through
 `AsyncLocalStorage`, so every repository call inside `signup()` joins one atomic transaction
 (user + welcome todo) without passing a `tx` handle around:
@@ -136,6 +146,7 @@ Layering rules enforced throughout:
 | Validation | `Context.define()` route contracts with typed `context.input`, plus Zod validator classes (`json()`, `form()`, `param()`) where responses are documented | `src/validators/` |
 | OpenAPI 3.1 | Spec generated **from the validators and route contracts**, Swagger UI, `@Hidden` routes, response schemas | `src/openapi/AppOpenApi.ts` |
 | Auth | `@asenajs/asena-auth`: `@Auth` provider, `@Protected` routes, Bearer **or** HttpOnly cookie, CSRF check for cookies, Argon2id hashing, logout / session list / revoke / logout-all | `src/auth/`, `src/controllers/AuthController.ts` |
+| Roles | `@Roles('admin')` guard (401 vs 403), roles in the session snapshot, role changes revoke the user's sessions in one transaction, first admin via `bun run user:admin` | `src/controllers/AdminController.ts`, `scripts/make-admin.ts` |
 | Sessions | Custom `AuthSessionStore` over Drizzle — sessions survive restarts and are shared across instances; deleting a user cascades to their sessions | `src/auth/DrizzleSessionStore.ts` |
 | Middleware | Global/controller/route levels, adapter built-ins subclassed (CORS, proxy-aware rate limiter) | `src/middlewares/` |
 | Database | `@Database` (bun-sql driver), `@Repository` + `BaseRepository`, migrations auto-applied on boot | `src/database/`, `src/repositories/` |
@@ -199,6 +210,12 @@ curl -b jar.txt localhost:3000/auth/me
 curl -H "authorization: Bearer $TOKEN" localhost:3000/auth/sessions
 curl -X POST -H "authorization: Bearer $TOKEN" localhost:3000/auth/logout
 curl -H "authorization: Bearer $TOKEN" localhost:3000/auth/me     # → 401, revoked server-side
+
+# make jane an admin (out of band — no HTTP route can promote its own caller), log in again
+bun run user:admin jane
+TOKEN=$(curl -s -H 'content-type: application/json' \
+  -d '{"userName":"jane","password":"supersecret"}' localhost:3000/auth/login | jq -r .token)
+curl -H "authorization: Bearer $TOKEN" localhost:3000/admin/users
 ```
 
 ## Project structure
@@ -222,10 +239,12 @@ src/
 ├─ services/                    # business logic; services own the invariants
 ├─ middlewares/                 # GlobalCors, AuthRateLimiter (adapter built-ins, subclassed)
 ├─ validators/                  # Zod validators + Context.define() contracts — validate AND feed OpenAPI
-├─ controllers/                 # thin HTTP layer only
+├─ controllers/                 # thin HTTP layer only (AdminController: @Roles('admin'))
 ├─ statics/                     # @StaticServe for public/
 ├─ websockets/                  # @WebSocket namespaces (chat, public notifications)
 └─ openapi/AppOpenApi.ts        # @OpenApi({ ui: true })
+scripts/
+└─ make-admin.ts                # bun run user:admin <userName> — bootstraps the first admin
 ```
 
 ## API overview
@@ -242,6 +261,8 @@ src/
 | `GET` | `/auth/sessions` | Session | The user's active sessions, the current one flagged |
 | `DELETE` | `/auth/sessions/:id` | Session | Revokes one of the user's own sessions (others → 404) |
 | `POST` | `/auth/logout-all` | Session | Ends every session of the user |
+| `GET` | `/admin/users` | Session + `admin` role | Every user with their role (no password hashes) |
+| `PUT` | `/admin/users/:id/role` | Session + `admin` role | `{ "role": "user" \| "admin" }`; ends all of that user's sessions; not on yourself (403) |
 | `GET` | `/todos` | Session | List the user's todos |
 | `POST` | `/todos` | Session | Create a todo |
 | `GET` | `/todos/:id` | Session | Get one todo (ownership enforced → 404) |
@@ -292,6 +313,19 @@ Auth is `@asenajs/asena-auth` with its native provider (`src/auth/AppAuth.ts`):
   origins from `ALLOWED_ORIGINS` (also the CORS allow-list) are trusted. Bearer tokens are exempt.
 - **Untrusted ids.** `DELETE /auth/sessions/:id` checks ownership in `AuthService` first —
   `revokeSessionById()` would end any session it is given.
+- **Roles.** `users.role` is `user` or `admin`; signup always creates a `user` (a `role` field in
+  the form is stripped by the validator). Login copies it into the session snapshot as
+  `roles: [role]`, which the default roles resolver reads for `@Roles(...)`: no session → `401`
+  with `WWW-Authenticate`, a session without the role → `403` without it.
+- **Snapshots and privilege changes.** A session keeps the roles it was created with. So
+  `PUT /admin/users/:id/role` updates the role **and** revokes every session of that user in one
+  `@Transaction` (`SessionRepository` joins it through `AsyncLocalStorage`) — a demoted admin is a
+  `401` on the next request, not an admin until the session expires. A promotion through
+  `bun run user:admin` applies from the next login.
+- **Bootstrapping.** The role endpoint itself needs the admin role, so the first admin is made
+  out of band with `bun run user:admin <userName>` (its own single DB connection, like
+  `MigrateService`). Admins cannot change their own role, so the acting admin can't lock
+  themselves out.
 
 ## WebSocket chat
 
@@ -343,15 +377,16 @@ Drizzle repositories with in-memory doubles via `overrides`.
 | Full app | `createTestApp` | Whole IoC container + real HTTP server + real asena-auth stack | `tests/e2e/` |
 
 ```bash
-bun test          # 93 tests across 9 files
+bun test          # 109 tests across 10 files
 ```
 
 Notable details worth copying into your own project:
 
 - web tests authenticate with `@TestAuth` from `@asenajs/asena-auth/testing`
-  (`tests/support/testAuth.ts`): an `x-test-user` header names the session user — no login, no
-  store — while the real guard still answers `401` without it. `createWebTest` has no `imports`,
-  so `authComponents` go into `components`,
+  (`tests/support/testAuth.ts`): an `x-test-user` header names the session user (`joe` holds the
+  `user` role, `ada` the `admin` role) — no login, no store — while the real guard still answers
+  `401` without a header and `403` without the role. `createWebTest` has no `imports`, so
+  `authComponents` go into `components`,
 - an auto-mocked provider has no getters, so the `AuthController` slice passes a small `AppAuth`
   stub (`cookieName`, `cookieOptions`, `logout`) through `overrides` and asserts the `Set-Cookie`,
 - unit tests get the provider auto-mocked too (`mocks.auth.createSession` …), configure explicit
@@ -364,6 +399,9 @@ Notable details worth copying into your own project:
   the whole session lifecycle: only the token hash is stored, cookie login, the CSRF check, session
   listing, revoking another device, the `404` for someone else's session, logout and logout-all,
   plus the WebSocket handshake with and without the `bearer` subprotocol token,
+- the roles suite shows the snapshot semantics end to end: a client-sent `role` is ignored at
+  signup, a promoted user's old session stays `403` until re-login, and a role change turns the
+  target's existing sessions into `401`s,
 - the e2e test boots the real OpenAPI post-processor and asserts `@Hidden` routes stay out of the spec,
 - the chat e2e flow covers the membership lifecycle end to end: non-member `403`s, idempotent join,
   ownership rules and cascade deletion.
@@ -395,6 +433,7 @@ Values needed before the container exists (decorator and middleware-constructor 
 | `bun run lint` | ESLint (flat config) |
 | `bun run build` | Production bundle to `dist/` via the Asena CLI (`asena-config.ts`) |
 | `bun run db:generate` | Generate SQL migrations from the Drizzle schemas |
+| `bun run user:admin <userName>` | Give an existing user the `admin` role (bootstraps the first admin) |
 
 ## Production
 
@@ -436,6 +475,9 @@ ALLOWED_ORIGINS=https://app.example.com bun dist/index.asena.js
 - **CORS**: the origin list moved to `ALLOWED_ORIGINS`, shared with the cookie's CSRF check.
 - **Errors**: `onError` wraps plain-text `HttpException`s (the guard's `401`/`403`) into the JSON
   envelope and keeps their headers.
+- **Roles**: migration `0003_user_roles` adds `users.role` (`user` default). `@Roles('admin')`
+  guards the new `/admin` controller; role changes revoke the target's sessions; the first admin
+  comes from `bun run user:admin`.
 - **Tests**: web slices authenticate with `TestAuthProvider`; e2e imports `authComponents` and
   overrides `SessionRepository`. `.env.test` now pins `ALLOWED_ORIGINS`, `SESSION_TTL` and
   `CHAT_MAX_PAGE_SIZE`, so a local `.env` cannot change test outcomes.

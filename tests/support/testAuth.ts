@@ -13,7 +13,8 @@ import type { AppUser } from '../../src/auth/AppAuth';
  */
 @TestAuth({
   users: {
-    joe: { id: '7', userName: 'joe' },
+    joe: { id: '7', userName: 'joe', roles: ['user'] },
+    ada: { id: '1', userName: 'ada', roles: ['admin'] },
   },
 })
 export class AppTestAuth extends TestAuthProvider<AppUser> {}
@@ -22,3 +23,4 @@ export class AppTestAuth extends TestAuthProvider<AppUser> {}
 export const testAuthComponents = [...authComponents, AppTestAuth];
 
 export const asJoe = { 'x-test-user': 'joe' };
+export const asAda = { 'x-test-user': 'ada' };

@@ -19,6 +19,7 @@ const userRow: UserRow = {
   age: 30,
   passwordHash: '$argon2id$stored-hash',
   profileImage: null,
+  role: 'admin',
   createdAt: new Date('2026-01-01T00:00:00Z'),
 };
 
@@ -34,7 +35,7 @@ const signupDto = {
 };
 
 const session = (id: string, createdAt: string) => ({
-  user: { id: '5', userName: 'jane' },
+  user: { id: '5', userName: 'jane', roles: ['user'] },
   session: { id, userId: '5', createdAt: new Date(createdAt), expiresAt: new Date('2026-02-01T00:00:00Z') },
 });
 
@@ -99,7 +100,7 @@ describe('AuthService', () => {
     expect(mocks.auth.createSession).not.toHaveBeenCalled();
   });
 
-  test('login opens a session holding a small user snapshot and returns its token', async () => {
+  test('login opens a session holding a small user snapshot (roles included) and returns its token', async () => {
     const { instance, mocks } = createAuthService();
 
     mocks.userService.getUserByUserName.mockResolvedValue(userRow);
@@ -111,8 +112,9 @@ describe('AuthService', () => {
 
     expect(token).toBe('opaque-token');
     expect('passwordHash' in user).toBe(false);
-    // asena-auth ids are strings; no password hash or profile data in the session
-    expect(mocks.auth.createSession).toHaveBeenCalledWith({ id: '5', userName: 'jane' });
+    // asena-auth ids are strings; no password hash or profile data in the session.
+    // `roles` is what @Roles guards check.
+    expect(mocks.auth.createSession).toHaveBeenCalledWith({ id: '5', userName: 'jane', roles: ['admin'] });
   });
 
   test('getProfile answers 401 when the session user no longer exists', async () => {
@@ -157,5 +159,26 @@ describe('AuthService', () => {
     await instance.revokeSession(5, 'mine');
 
     expect(mocks.auth.revokeSessionById).toHaveBeenCalledWith('mine');
+  });
+
+  test('changeRole refuses to change the acting admin own role (403)', async () => {
+    const { instance, mocks } = createAuthService();
+
+    await expectHttpError(instance.changeRole(5, 5, 'user'), 403);
+    expect(mocks.userService.changeRole).not.toHaveBeenCalled();
+    expect(mocks.auth.revokeUserSessions).not.toHaveBeenCalled();
+  });
+
+  test('changeRole updates the role, then ends every session of that user', async () => {
+    const { instance, mocks } = createAuthService();
+
+    mocks.userService.changeRole.mockResolvedValue({ ...publicUser, id: 8, role: 'admin' });
+
+    const user = await instance.changeRole(5, 8, 'admin');
+
+    expect(user.role).toBe('admin');
+    expect(mocks.userService.changeRole).toHaveBeenCalledWith(8, 'admin');
+    // session snapshots carry the old roles — they must not outlive the change
+    expect(mocks.auth.revokeUserSessions).toHaveBeenCalledWith('8');
   });
 });

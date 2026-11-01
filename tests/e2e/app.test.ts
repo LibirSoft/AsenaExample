@@ -18,8 +18,9 @@ import { TodoController } from '../../src/controllers/TodoController';
 import { HealthController } from '../../src/controllers/HealthController';
 import { StaticController } from '../../src/controllers/StaticController';
 import { ChatController } from '../../src/controllers/ChatController';
+import { AdminController } from '../../src/controllers/AdminController';
 import { ChatWebSocket } from '../../src/websockets/ChatWebSocket';
-import type { UserRow } from '../../src/services/UserService';
+import type { PublicUser, UserRow } from '../../src/services/UserService';
 import type { TodoRow } from '../../src/services/TodoService';
 import type { ChatRoomRow, MessageRow } from '../../src/services/ChatService';
 import type { SessionInfo } from '../../src/services/AuthService';
@@ -44,9 +45,16 @@ function createUserRepositoryDouble() {
     findByUserName: async (userName: string) => users.find((user) => user.userName === userName),
     existsBy: async (field: keyof UserRow, value: unknown) =>
       users.some((user) => user[field] === value),
-    create: async (data: Omit<UserRow, 'id' | 'createdAt'>) => {
-      const user: UserRow = { id: nextId++, createdAt: new Date(), ...data };
+    create: async (data: Omit<UserRow, 'id' | 'createdAt' | 'role'>) => {
+      // role: the column's DEFAULT 'user'
+      const user: UserRow = { id: nextId++, createdAt: new Date(), role: 'user', ...data };
       users.push(user);
+      return user;
+    },
+    findAll: async () => [...users],
+    updateById: async (id: number, data: Partial<UserRow>) => {
+      const user = users.find((row) => row.id === id);
+      if (user) Object.assign(user, data);
       return user;
     },
   };
@@ -235,6 +243,7 @@ beforeAll(async () => {
       HealthController,
       StaticController,
       ChatController,
+      AdminController,
       ChatWebSocket,
     ],
     // The asena-auth guard, its registry and the WebSocket middleware ship in
@@ -664,5 +673,82 @@ describe('Sessions (end to end)', () => {
     await app.get('/todos', authHeaders()).expectStatus(401);
     // other users are untouched
     await app.get('/auth/me', bearer(bobToken)).expectStatus(200);
+  });
+});
+
+describe('Admin & roles (end to end)', () => {
+  const login = (userName: string) =>
+    app.post('/auth/login', json({ userName, password: 'supersecret' })).expectStatus(200);
+  const bearer = (value: string, body?: unknown) => ({
+    headers: { authorization: `Bearer ${value}`, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const userId = (userName: string) => userRepository.users.find((user) => user.userName === userName)!.id;
+
+  let adminToken = '';
+
+  test('signup ignores a role sent by the client — every new user is a plain user', async () => {
+    const form = new FormData();
+    form.set('userName', 'mallory');
+    form.set('firstName', 'Mallory');
+    form.set('lastName', 'M');
+    form.set('age', '30');
+    form.set('password', 'supersecret');
+    form.set('role', 'admin');
+    form.set('file', new File([new Uint8Array([1])], 'avatar.png', { type: 'image/png' }));
+
+    const response = await fetch(`${app.baseUrl}/auth/signup`, { method: 'POST', body: form });
+
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { user: PublicUser }).user.role).toBe('user');
+  });
+
+  test('a plain user gets 403 on admin routes', async () => {
+    await app.get('/admin/users', bearer(bobToken)).expectStatus(403);
+  });
+
+  test('a promotion applies from the next login — sessions keep their snapshot roles', async () => {
+    const before = (await login('jane')).json<{ token: string }>().token;
+
+    // what `bun run user:admin jane` does in the database
+    userRepository.users.find((user) => user.userName === 'jane')!.role = 'admin';
+
+    await app.get('/admin/users', bearer(before)).expectStatus(403);
+
+    adminToken = (await login('jane')).json<{ token: string }>().token;
+
+    const users = (await app.get('/admin/users', bearer(adminToken)).expectStatus(200)).json<{
+      users: PublicUser[];
+    }>().users;
+
+    expect(users.map((user) => user.userName)).toContain('bob');
+    expect(users.some((user) => 'passwordHash' in user)).toBe(false);
+  });
+
+  test('an admin cannot change their own role (403)', async () => {
+    await app
+      .put(`/admin/users/${userId('jane')}/role`, bearer(adminToken, { role: 'user' }))
+      .expectStatus(403);
+  });
+
+  test('unknown users are a 404, unknown roles a 400', async () => {
+    await app.put('/admin/users/9999/role', bearer(adminToken, { role: 'admin' })).expectStatus(404);
+    await app
+      .put(`/admin/users/${userId('bob')}/role`, bearer(adminToken, { role: 'superuser' }))
+      .expectStatus(400);
+  });
+
+  test('changing a role ends every session of that user', async () => {
+    const response = await app
+      .put(`/admin/users/${userId('bob')}/role`, bearer(adminToken, { role: 'admin' }))
+      .expectStatus(200);
+
+    expect(response.json<{ user: PublicUser }>().user.role).toBe('admin');
+
+    // bob's session carried the old role — it is gone, not silently stale
+    await app.get('/auth/me', bearer(bobToken)).expectStatus(401);
+
+    const bobAdmin = (await login('bob')).json<{ token: string }>().token;
+    await app.get('/admin/users', bearer(bobAdmin)).expectStatus(200);
   });
 });

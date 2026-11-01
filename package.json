@@ -9,7 +9,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "user:admin": "bun scripts/make-admin.ts"
   },
   "dependencies": {
     "@asenajs/asena": "^0.12.3",
