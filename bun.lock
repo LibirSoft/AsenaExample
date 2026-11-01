@@ -5,18 +5,19 @@
     "": {
       "name": "asena-example",
       "dependencies": {
-        "@asenajs/asena": "^0.12.1",
+        "@asenajs/asena": "^0.12.3",
+        "@asenajs/asena-auth": "^1.0.0",
         "@asenajs/asena-drizzle": "^4.0.1",
         "@asenajs/asena-logger": "^3.0.1",
         "@asenajs/asena-openapi": "^3.2.0",
-        "@asenajs/hono-adapter": "^5.0.1",
+        "@asenajs/hono-adapter": "^5.0.3",
         "drizzle-orm": "^0.45.2",
         "hono": "^4.13.14",
         "reflect-metadata": "^0.2.2",
         "zod": "^4",
       },
       "devDependencies": {
-        "@asenajs/asena-cli": "^0.11.0",
+        "@asenajs/asena-cli": "^0.12.0",
         "@types/bun": "^1.4.4",
         "drizzle-kit": "^0.31.10",
         "eslint": "^10.8.1",
@@ -27,13 +28,12 @@
       },
     },
   },
-  "overrides": {
-    "@asenajs/asena": "^0.12.1",
-  },
   "packages": {
-    "@asenajs/asena": ["@asenajs/asena@0.12.1", "", { "dependencies": { "reflect-metadata": "^0.2.2" } }, "sha512-fFu5ThgmlbNvfBWfUtvvPFHQFovT7oxHEcgiHBiBhacK6Uy+83b+HB23omZ6ok0tOlQMFJqpP3CQ0fvENSV0Ug=="],
+    "@asenajs/asena": ["@asenajs/asena@0.12.3", "", { "dependencies": { "reflect-metadata": "^0.2.2" } }, "sha512-Sh4QmzuMIzrEU5MB1eFVcvVezuHbNiuf/7Gj20W3OWX0yKfAlNqkGmWfnLU2O8U7xMeE6jEfUQJUMHxL9X4Qog=="],
 
-    "@asenajs/asena-cli": ["@asenajs/asena-cli@0.11.0", "", { "dependencies": { "@asenajs/asena": "^0.11.0", "@changesets/cli": "^2.31.1", "commander": "^12.1.0", "inquirer": "^12.11.1", "ora": "^8.2.0", "reflect-metadata": "^0.2.2", "strip-json-comments": "^5.0.3" }, "peerDependencies": { "typescript": "^5.0.0" }, "bin": { "asena": "dist/bin/asena.js" } }, "sha512-5hwir9oiq9nytUMfvNYmaFfFCZhE8lLSMF8TUsL6unYu0B8dIhiM8+Dwtk+z5uD8Qx6/j3kPfNiSPVkdKyRRVA=="],
+    "@asenajs/asena-auth": ["@asenajs/asena-auth@1.0.0", "", { "peerDependencies": { "@asenajs/asena": "^0.12.2", "better-auth": ">=1.2.0 <2", "reflect-metadata": "^0.2.2", "typescript": "^5.9.3" }, "optionalPeers": ["better-auth"] }, "sha512-8JVsUI9UbF50gOCPStvDclqmSf/WhdDF/03TWu1eXXvCkTSAdlg3Zh6RDp2oapUYp37V8M9Cj5qHl9PO6drJuA=="],
+
+    "@asenajs/asena-cli": ["@asenajs/asena-cli@0.12.0", "", { "dependencies": { "@changesets/cli": "^2.31.1", "commander": "^12.1.0", "inquirer": "^12.11.1", "ora": "^8.2.0", "reflect-metadata": "^0.2.2", "strip-json-comments": "^5.0.3" }, "peerDependencies": { "typescript": "^5.0.0" }, "bin": { "asena": "dist/bin/asena.js" } }, "sha512-mT/16CWh8B2O15zak7V/DFJDlECOnO3TEzKQEjBjCql28rFT0Ev06bsPiSNDfBfvcK0TEC73UYnuUojVooAxvA=="],
 
     "@asenajs/asena-drizzle": ["@asenajs/asena-drizzle@4.0.1", "", { "peerDependencies": { "@asenajs/asena": "^0.11.0 || ^0.12.0", "drizzle-orm": "^0.45.2", "mysql2": ">=2", "pg": ">=8", "reflect-metadata": "^0.2.2", "typescript": "^5.9.3" } }, "sha512-TYZFWEGSxlgFcI82YnCNIjWSovF2yppU9Tkp1Kb/EQH+isrWLi9Idkpvb4Es+huWmc9W2bmJCIZiGrKCYe9GyQ=="],
 
@@ -41,7 +41,7 @@
 
     "@asenajs/asena-openapi": ["@asenajs/asena-openapi@3.2.0", "", { "peerDependencies": { "@asenajs/asena": "^0.12.0", "reflect-metadata": "^0.2.2", "zod": "^4.3.6" } }, "sha512-U1mK+zbWVy1v7YN8hXqfjIRLcj94gNNbz8re6kMIEdmqrsv9GcwwtsjdEQA2bb10oX4uy2NASQEtXqDgcDQdgQ=="],
 
-    "@asenajs/hono-adapter": ["@asenajs/hono-adapter@5.0.1", "", { "dependencies": { "@hono/zod-validator": "^0.9.0" }, "peerDependencies": { "@asenajs/asena": "^0.12.0", "hono": ">=4.12.9", "typescript": "^5.8.2", "zod": "^4.3.6" } }, "sha512-fpTDkZQ53rJ+JJYsXC7b4TY/5nyzbeezGZzWqYEMxL37vyNfzO8er/5XiGsAuFc5I9TI1iYDltcONl8dDxyXPQ=="],
+    "@asenajs/hono-adapter": ["@asenajs/hono-adapter@5.0.3", "", { "dependencies": { "@hono/zod-validator": "^0.9.0" }, "peerDependencies": { "@asenajs/asena": "^0.12.0", "hono": ">=4.12.9", "typescript": "^5.8.2", "zod": "^4.3.6" } }, "sha512-tqii2JGOw394EsNPArHsypqZKA3D3lLcoxPv8XWf++oepaqhyp2aJpKQDB10P58yEn+3BFcmAkQchZHp55JmVw=="],
 
     "@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 

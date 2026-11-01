@@ -9,7 +9,7 @@ export class AppConfig extends ConfigService {
     return [GlobalCors];
   }
 
-  public onError(error: Error, context: Context): Response | Promise<Response> {
+  public async onError(error: Error, context: Context): Promise<Response> {
     // Validation errors first: a ValidationError is itself an HTTP exception,
     // so a generic isHttpException() branch above it would swallow it.
     if (isValidationError(error)) {
@@ -22,7 +22,26 @@ export class AppConfig extends ConfigService {
     }
 
     if (isHttpException(error)) {
-      return error.getResponse?.() ?? context.send({ success: false, message: error.message }, error.status);
+      const response = error.getResponse?.();
+
+      if (!response) {
+        return context.send({ success: false, message: error.message }, error.status);
+      }
+
+      // Domain exceptions already carry the { success: false, message } envelope.
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        return response;
+      }
+
+      // Plain-text exceptions — e.g. the asena-auth guard's 401 / 403 — get the
+      // same envelope; their headers (WWW-Authenticate: Bearer) are kept.
+      const headers = new Headers(response.headers);
+      headers.set('content-type', 'application/json');
+
+      return new Response(JSON.stringify({ success: false, message: await response.text() }), {
+        status: response.status,
+        headers,
+      });
     }
 
     console.error('[AppConfig] Unhandled error:', error);

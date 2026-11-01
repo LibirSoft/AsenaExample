@@ -1,11 +1,19 @@
+import type { AuthSession } from '@asenajs/asena/auth';
 import { WebSocket } from '@asenajs/asena/decorators';
 import { Inject } from '@asenajs/asena/decorators/ioc';
 import { AsenaWebSocketService, type Socket } from '@asenajs/asena/web-socket';
 import { isHttpException } from '@asenajs/asena/adapter';
+import { AuthWebSocketMiddleware } from '@asenajs/asena-auth';
+import type { AppUser } from '../auth/AppAuth';
 import { ChatService } from '../services/ChatService';
-import { WSAuthMiddleware } from '../middlewares/WSAuthMiddleware';
 
-/** Set by WSAuthMiddleware during the handshake (context.setWebSocketValue). */
+/** Put on the socket by AuthWebSocketMiddleware during the handshake. */
+interface ChatSocketData {
+  authSession: AuthSession<AppUser>;
+}
+
+type ChatSocket = Socket<ChatSocketData>;
+
 export interface WsUser {
   id: number;
   userName: string;
@@ -23,24 +31,33 @@ const roomTopic = (roomId: number) => `room:${roomId}`;
  * Real-time chat over the /chat-room namespace. Membership rules are enforced
  * by ChatService — 'join' registers the membership, so a 'message' from a
  * non-member is rejected there with a 403/404 that we relay as an error event.
+ *
+ * Authentication: @Protected does not apply to sockets — the namespace lists
+ * asena-auth's AuthWebSocketMiddleware instead. It resolves the same session
+ * as the REST API from the `bearer, <token>` subprotocol pair (browsers:
+ * `new WebSocket(url, ['bearer', token])`), an Authorization header (server
+ * clients) or the session cookie (same-origin pages), and answers 401 before
+ * the upgrade when there is none.
  */
-@WebSocket({ path: '/chat-room', middlewares: [WSAuthMiddleware], name: 'ChatWebSocket' })
-export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
+@WebSocket({ path: '/chat-room', middlewares: [AuthWebSocketMiddleware], name: 'ChatWebSocket' })
+export class ChatWebSocket extends AsenaWebSocketService<ChatSocketData> {
   @Inject(ChatService)
   private chatService!: ChatService;
 
-  protected onOpen(ws: Socket<WsUser>): void {
+  protected onOpen(ws: ChatSocket): void {
+    const user = socketUser(ws);
+
     ws.send(
       JSON.stringify({
         type: 'connected',
         message: 'Welcome to the chat!',
-        userId: ws.data.values.id,
-        userName: ws.data.values.userName,
+        userId: user.id,
+        userName: user.userName,
       }),
     );
   }
 
-  protected async onMessage(ws: Socket<WsUser>, message: Buffer | string): Promise<void> {
+  protected async onMessage(ws: ChatSocket, message: Buffer | string): Promise<void> {
     let data: ClientMessage;
 
     try {
@@ -50,7 +67,7 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
       return;
     }
 
-    const user = ws.data.values;
+    const user = socketUser(ws);
 
     switch (data.type) {
       case 'join':
@@ -66,7 +83,7 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
     }
   }
 
-  private async handleJoin(ws: Socket<WsUser>, user: WsUser, roomId: number): Promise<void> {
+  private async handleJoin(ws: ChatSocket, user: WsUser, roomId: number): Promise<void> {
     try {
       await this.chatService.joinRoom(user.id, roomId);
     } catch (error) {
@@ -86,7 +103,7 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
     });
   }
 
-  private async handleLeave(ws: Socket<WsUser>, user: WsUser, roomId: number): Promise<void> {
+  private async handleLeave(ws: ChatSocket, user: WsUser, roomId: number): Promise<void> {
     try {
       await this.chatService.leaveRoom(user.id, roomId);
     } catch (error) {
@@ -106,7 +123,7 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
   }
 
   private async handleMessage(
-    ws: Socket<WsUser>,
+    ws: ChatSocket,
     user: WsUser,
     roomId: number,
     content: string,
@@ -136,7 +153,7 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
     });
   }
 
-  private handleTyping(ws: Socket<WsUser>, user: WsUser, roomId: number): void {
+  private handleTyping(ws: ChatSocket, user: WsUser, roomId: number): void {
     // No repository round-trip per keystroke — only subscribed (member) sockets
     // can receive room events anyway.
     if (!ws.isSubscribed(roomTopic(roomId))) {
@@ -153,11 +170,18 @@ export class ChatWebSocket extends AsenaWebSocketService<WsUser> {
   }
 
   /** Relays a domain error (404/403 HttpException) back to the offending socket. */
-  private sendWsError(ws: Socket<WsUser>, roomId: number, error: unknown): void {
+  private sendWsError(ws: ChatSocket, roomId: number, error: unknown): void {
     const message = isHttpException(error) ? extractMessage(error) : 'Failed to process message';
 
     ws.send(JSON.stringify({ type: 'error', roomId, message }));
   }
+}
+
+/** The session user with the numeric database id the services work with. */
+function socketUser(ws: ChatSocket): WsUser {
+  const { user } = ws.data.values.authSession;
+
+  return { id: Number(user.id), userName: user.userName };
 }
 
 function extractMessage(error: unknown): string {

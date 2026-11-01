@@ -1,5 +1,5 @@
 import { Service } from '@asenajs/asena/decorators';
-import { Inject } from '@asenajs/asena/decorators/ioc';
+import { Inject, Value } from '@asenajs/asena/decorators/ioc';
 import { HttpException } from '@asenajs/asena/adapter';
 import { Transaction } from '@asenajs/asena-drizzle';
 import { chatRooms } from '../database/schemas/chat-room.schema';
@@ -10,8 +10,6 @@ import type { CreateChatRoomDto } from '../validators/ChatValidator';
 export type ChatRoomRow = typeof chatRooms.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 
-const MAX_MESSAGE_PAGE_SIZE = 100;
-
 /**
  * Chat domain rules: rooms are discoverable by everyone but readable/writable
  * only by their members; the creator is the owner; ownership and membership
@@ -21,6 +19,14 @@ const MAX_MESSAGE_PAGE_SIZE = 100;
 export class ChatService {
   @Inject('ChatRepository')
   private chatRepository!: ChatRepository;
+
+  /**
+   * Configuration injected like a collaborator: read from process.env when the
+   * container builds the service. `parse` runs on the raw string; with a
+   * `default` an unset variable is fine (without one the boot would stop).
+   */
+  @Value('CHAT_MAX_PAGE_SIZE', { parse: Number, default: 100 })
+  private maxPageSize!: number;
 
   /**
    * Creates the room and the creator's membership atomically — both inserts
@@ -90,7 +96,7 @@ export class ChatService {
     await this.getExistingRoom(roomId);
     await this.assertMember(roomId, userId);
 
-    const pageSize = Math.min(Math.max(Math.trunc(limit ?? 50), 1), MAX_MESSAGE_PAGE_SIZE);
+    const pageSize = Math.min(Math.max(Math.trunc(limit ?? 50), 1), this.maxPageSize);
     return this.chatRepository.findMessagesByRoomId(roomId, pageSize);
   }
 

@@ -1,22 +1,28 @@
 import { Service } from '@asenajs/asena/decorators';
-import { Inject, Value } from '@asenajs/asena/decorators/ioc';
+import { Inject } from '@asenajs/asena/decorators/ioc';
 import { HttpException } from '@asenajs/asena/adapter';
 import { Transaction } from '@asenajs/asena-drizzle';
-import { sign, verify } from 'hono/jwt';
-import { UserService, type PublicUser, type UserRow } from './UserService';
+import { AppAuth } from '../auth/AppAuth';
+import type { UserRole } from '../database/schemas/user.schema';
+import { UserService, type PublicUser } from './UserService';
 import { TodoService } from './TodoService';
 import { FileStorageService } from './FileStorageService';
 import type { SignupDto } from '../validators/SignupValidator';
 
-export interface JwtPayload {
-  sub: number;
-  userName: string;
-  exp: number;
-  [key: string]: unknown;
+export interface SessionInfo {
+  /** The session's public id (SHA-256 of its token) — safe to show, never usable as a token. */
+  id: string;
+  createdAt: Date;
+  expiresAt: Date;
+  /** True for the session that made this request. */
+  current: boolean;
 }
 
-const TOKEN_TTL_SECONDS = 60 * 60 * 12;
-
+/**
+ * Account and session rules. Token mechanics (issuing, hashing, expiry,
+ * revocation) belong to the AppAuth provider; this service decides WHO gets a
+ * session and which sessions a user may see or end.
+ */
 @Service()
 export class AuthService {
   @Inject(UserService)
@@ -28,13 +34,8 @@ export class AuthService {
   @Inject(FileStorageService)
   private fileStorageService!: FileStorageService;
 
-  /**
-   * Required configuration: with no default, an unset JWT_SECRET fails the
-   * boot with an error naming this field instead of signing tokens with a
-   * guessable fallback.
-   */
-  @Value('JWT_SECRET')
-  private jwtSecret!: string;
+  @Inject(AppAuth)
+  private auth!: AppAuth;
 
   /**
    * Creates the user and their welcome todo atomically. Both repository calls
@@ -49,7 +50,7 @@ export class AuthService {
       });
     }
 
-    const passwordHash = await Bun.password.hash(dto.password, { algorithm: 'argon2id' });
+    const passwordHash = await this.auth.hashPassword(dto.password);
     const profileImage =
       dto.file instanceof File && dto.file.size > 0
         ? await this.fileStorageService.saveProfileImage(dto.file)
@@ -73,23 +74,27 @@ export class AuthService {
     return user;
   }
 
+  /** Checks the credentials and opens a new session; returns its token once — it is never stored. */
   public async login(userName: string, password: string): Promise<{ token: string; user: PublicUser }> {
     const user = await this.userService.getUserByUserName(userName);
 
-    if (!user || !(await Bun.password.verify(password, user.passwordHash))) {
+    if (!user || !(await this.auth.verifyPassword(password, user.passwordHash))) {
       throw new HttpException(401, { success: false, message: 'Invalid credentials' });
     }
 
-    return { token: await this.createToken(user), user: this.userService.toPublicUser(user) };
+    // The session stores a small, plain snapshot; handlers and @Roles guards read it on every request.
+    const { token } = await this.auth.createSession({
+      id: String(user.id),
+      userName: user.userName,
+      roles: [user.role],
+    });
+
+    return { token, user: this.userService.toPublicUser(user) };
   }
 
-  /**
-   * Used by AuthMiddleware: verifies the bearer token and resolves it to a
-   * live user, so deleted accounts lose access immediately.
-   */
-  public async getUserFromToken(token: string): Promise<PublicUser> {
-    const payload = await this.verifyToken(token);
-    const user = await this.userService.getUserById(payload.sub);
+  /** The live user behind a session — fresh data, not the session snapshot. */
+  public async getProfile(userId: number): Promise<PublicUser> {
+    const user = await this.userService.getUserById(userId);
 
     if (!user) {
       throw new HttpException(401, { success: false, message: 'User no longer exists' });
@@ -98,21 +103,57 @@ export class AuthService {
     return this.userService.toPublicUser(user);
   }
 
-  public async verifyToken(token: string): Promise<JwtPayload> {
-    try {
-      return (await verify(token, this.jwtSecret, 'HS256')) as JwtPayload;
-    } catch {
-      throw new HttpException(401, { success: false, message: 'Invalid or expired token' });
-    }
+  /** The user's active sessions ("signed-in devices"), newest first. */
+  public async listSessions(userId: number, currentSessionId: string): Promise<SessionInfo[]> {
+    const sessions = await this.auth.listUserSessions(String(userId));
+
+    return sessions
+      .map(({ session }) => ({
+        id: session.id,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+        current: session.id === currentSessionId,
+      }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
-  private async createToken(user: UserRow): Promise<string> {
-    const payload: JwtPayload = {
-      sub: user.id,
-      userName: user.userName,
-      exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
-    };
+  /**
+   * Ends one of the user's own sessions. The id comes from the client, so it is
+   * untrusted: revokeSessionById() would end ANY session, ownership is checked
+   * first — someone else's session id is indistinguishable from an unknown one.
+   */
+  public async revokeSession(userId: number, sessionId: string): Promise<void> {
+    const own = await this.auth.listUserSessions(String(userId));
 
-    return sign(payload, this.jwtSecret, 'HS256');
+    if (!own.some(({ session }) => session.id === sessionId)) {
+      throw new HttpException(404, { success: false, message: 'Session not found' });
+    }
+
+    await this.auth.revokeSessionById(sessionId);
+  }
+
+  /**
+   * Changes a user's role and ends all of their sessions. Sessions hold a
+   * snapshot of the roles taken at login, so without the revocation a demoted
+   * admin would keep admin rights until their sessions expired. Both writes
+   * join one transaction: SessionRepository picks up the active transaction
+   * through AsyncLocalStorage like every other repository.
+   */
+  @Transaction()
+  public async changeRole(adminId: number, userId: number, role: UserRole): Promise<PublicUser> {
+    // Keeps at least the acting admin in place — nobody can lock themselves out.
+    if (adminId === userId) {
+      throw new HttpException(403, { success: false, message: 'Admins cannot change their own role' });
+    }
+
+    const user = await this.userService.changeRole(userId, role);
+    await this.auth.revokeUserSessions(String(userId));
+
+    return user;
+  }
+
+  /** Signs the user out everywhere — every device, the current one included. */
+  public async revokeAllSessions(userId: number): Promise<void> {
+    await this.auth.revokeUserSessions(String(userId));
   }
 }

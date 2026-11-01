@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { createTestApp, silentLogger } from '@asenajs/asena/test';
+import { authComponents } from '@asenajs/asena-auth';
 import { createHonoAdapter } from '@asenajs/hono-adapter';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { AppConfig } from '../../src/config/AppConfig';
 import { AppOpenApi } from '../../src/openapi/AppOpenApi';
 import { GlobalCors } from '../../src/middlewares/GlobalCors';
-import { AuthMiddleware } from '../../src/middlewares/AuthMiddleware';
 import { AuthRateLimiter } from '../../src/middlewares/AuthRateLimiter';
 import { PublicStaticServe } from '../../src/statics/PublicStaticServe';
 import { LoginValidator } from '../../src/validators/LoginValidator';
@@ -18,15 +18,22 @@ import { TodoController } from '../../src/controllers/TodoController';
 import { HealthController } from '../../src/controllers/HealthController';
 import { StaticController } from '../../src/controllers/StaticController';
 import { ChatController } from '../../src/controllers/ChatController';
-import type { UserRow } from '../../src/services/UserService';
+import { AdminController } from '../../src/controllers/AdminController';
+import { ChatWebSocket } from '../../src/websockets/ChatWebSocket';
+import type { PublicUser, UserRow } from '../../src/services/UserService';
 import type { TodoRow } from '../../src/services/TodoService';
 import type { ChatRoomRow, MessageRow } from '../../src/services/ChatService';
+import type { SessionInfo } from '../../src/services/AuthService';
+import type { sessions } from '../../src/database/schemas/session.schema';
 
 /**
- * Full-application tests: the real IoC container, middlewares, validators and
- * services — only the Drizzle repositories are replaced with in-memory
- * doubles, so the suite runs without PostgreSQL.
+ * Full-application tests: the real IoC container, middlewares, validators,
+ * services and the real asena-auth stack (guard, AppAuth provider with argon2
+ * hashing, DrizzleSessionStore) — only the Drizzle repositories are replaced
+ * with in-memory doubles, so the suite runs without PostgreSQL.
  */
+
+type SessionRow = typeof sessions.$inferSelect;
 
 function createUserRepositoryDouble() {
   const users: UserRow[] = [];
@@ -38,9 +45,16 @@ function createUserRepositoryDouble() {
     findByUserName: async (userName: string) => users.find((user) => user.userName === userName),
     existsBy: async (field: keyof UserRow, value: unknown) =>
       users.some((user) => user[field] === value),
-    create: async (data: Omit<UserRow, 'id' | 'createdAt'>) => {
-      const user: UserRow = { id: nextId++, createdAt: new Date(), ...data };
+    create: async (data: Omit<UserRow, 'id' | 'createdAt' | 'role'>) => {
+      // role: the column's DEFAULT 'user'
+      const user: UserRow = { id: nextId++, createdAt: new Date(), role: 'user', ...data };
       users.push(user);
+      return user;
+    },
+    findAll: async () => [...users],
+    updateById: async (id: number, data: Partial<UserRow>) => {
+      const user = users.find((row) => row.id === id);
+      if (user) Object.assign(user, data);
       return user;
     },
   };
@@ -145,9 +159,44 @@ function createChatRepositoryDouble() {
   };
 }
 
+function createSessionRepositoryDouble() {
+  const rows = new Map<string, SessionRow>();
+
+  return {
+    rows,
+    create: async (data: SessionRow) => {
+      rows.set(data.id, { ...data });
+      return data;
+    },
+    findById: async (id: string) => rows.get(id) ?? null,
+    findAllByUserId: async (userId: number) => [...rows.values()].filter((row) => row.userId === userId),
+    updateById: async (id: string, data: Partial<SessionRow>) => {
+      const row = rows.get(id);
+      if (row) Object.assign(row, data);
+      return row;
+    },
+    deleteById: async (id: string) => rows.delete(id),
+    deleteAllByUserId: async (userId: number) => {
+      let deleted = 0;
+      for (const [id, row] of rows) {
+        if (row.userId === userId && rows.delete(id)) deleted++;
+      }
+      return deleted;
+    },
+    deleteExpired: async (now: Date) => {
+      let deleted = 0;
+      for (const [id, row] of rows) {
+        if (row.expiresAt < now && rows.delete(id)) deleted++;
+      }
+      return deleted;
+    },
+  };
+}
+
 const userRepository = createUserRepositoryDouble();
 const todoRepository = createTodoRepositoryDouble();
 const chatRepository = createChatRepositoryDouble();
+const sessionRepository = createSessionRepositoryDouble();
 
 let app: Awaited<ReturnType<typeof createTestApp>>;
 let token = '';
@@ -171,17 +220,17 @@ beforeAll(async () => {
   app = await createTestApp({
     adapter,
     // createTestApp follows every @Inject(Class) from these entries, so the
-    // services behind the controllers and middlewares (AuthService,
-    // UserService, TodoService, ChatService, FileStorageService) are
+    // services behind the controllers (AuthService, UserService, TodoService,
+    // ChatService, FileStorageService) and the AppAuth provider are
     // discovered and registered for real. Components referenced only by
     // decorator options — middlewares, validators, the static-serve class —
-    // and the config/post-processors are not injected by anyone: list them.
-    // Route context contracts (Context.define) are plain classes, not components.
+    // and the config/post-processors/sockets are not injected by anyone: list
+    // them. Route context contracts (Context.define) are plain classes, not
+    // components.
     components: [
       AppConfig,
       AppOpenApi,
       GlobalCors,
-      AuthMiddleware,
       AuthRateLimiter,
       LoginValidator,
       SignupValidator,
@@ -194,13 +243,19 @@ beforeAll(async () => {
       HealthController,
       StaticController,
       ChatController,
+      AdminController,
+      ChatWebSocket,
     ],
+    // The asena-auth guard, its registry and the WebSocket middleware ship in
+    // the package: they come in through imports, exactly as in src/index.ts.
+    imports: [...authComponents],
     // Repositories are injected by name ('ChatRepository') or replaced here;
     // a name in overrides also stops the dependency walk.
     overrides: {
       UserRepository: userRepository,
       TodoRepository: todoRepository,
       ChatRepository: chatRepository,
+      SessionRepository: sessionRepository,
     },
   });
 });
@@ -281,14 +336,20 @@ describe('Todo API (end to end)', () => {
     await app.get(profileImage).expectStatus(200);
   });
 
-  test('logs in and returns a bearer token', async () => {
+  test('logs in and returns an opaque session token', async () => {
     const response = await app
       .post('/auth/login', json({ userName: 'jane', password: 'supersecret' }))
       .expectStatus(200)
       .expectJsonContains({ success: true });
 
     token = response.json<{ token: string }>().token;
-    expect(token).not.toBe('');
+    expect(token).toHaveLength(43); // 32 random bytes, unpadded base64url
+
+    // only the token's SHA-256 is persisted — never the token itself
+    expect(sessionRepository.rows.has(token)).toBe(false);
+    expect(sessionRepository.rows.has(new Bun.CryptoHasher('sha256').update(token).digest('hex'))).toBe(
+      true,
+    );
   });
 
   test('rejects a wrong password with 401', async () => {
@@ -306,8 +367,17 @@ describe('Todo API (end to end)', () => {
     expect(response.json<{ user: { userName: string } }>().user.userName).toBe('jane');
   });
 
-  test('blocks /todos without a token', async () => {
-    await app.get('/todos').expectStatus(401);
+  test('blocks /todos without a session (401 + WWW-Authenticate, app envelope)', async () => {
+    const response = await app
+      .get('/todos')
+      .expectStatus(401)
+      .expectJson({ success: false, message: 'Unauthorized' });
+
+    expect(response.headers.get('www-authenticate')).toBe('Bearer');
+  });
+
+  test('rejects an unknown bearer token', async () => {
+    await app.get('/todos', { headers: { authorization: 'Bearer not-a-real-session' } }).expectStatus(401);
   });
 
   test('lists the welcome todo created during signup', async () => {
@@ -487,5 +557,198 @@ describe('Chat API (end to end)', () => {
     await app.delete(`/chat/rooms/${roomId}`, authHeaders()).expectStatus(200);
 
     await app.get(`/chat/rooms/${roomId}/messages`, authHeaders()).expectStatus(404);
+  });
+});
+
+/** Opens a socket and resolves with its first message, or rejects when the handshake fails. */
+function firstSocketMessage(path: string, protocols?: string[]): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`${app.baseUrl.replace(/^http/, 'ws')}${path}`, protocols);
+
+    socket.addEventListener('message', (event) => {
+      resolve(JSON.parse(String(event.data)));
+      socket.close();
+    });
+    socket.addEventListener('error', () => reject(new Error('handshake refused')));
+  });
+}
+
+describe('Chat WebSocket (end to end)', () => {
+  test('authenticates the upgrade with the bearer subprotocol token', async () => {
+    const welcome = await firstSocketMessage('/chat-room', ['bearer', token]);
+
+    expect(welcome).toMatchObject({ type: 'connected', userName: 'jane' });
+  });
+
+  test('refuses an upgrade without a session (401 before the socket opens)', async () => {
+    await expect(firstSocketMessage('/chat-room')).rejects.toThrow('handshake refused');
+
+    const response = await fetch(`${app.baseUrl}/chat-room`, {
+      headers: { upgrade: 'websocket', connection: 'Upgrade' },
+    });
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('Sessions (end to end)', () => {
+  const login = (userName: string, headers: Record<string, string> = {}) =>
+    app.post('/auth/login', {
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({ userName, password: 'supersecret' }),
+    });
+
+  const bearer = (value: string) => ({ headers: { authorization: `Bearer ${value}` } });
+
+  test('login also writes an HttpOnly session cookie that authenticates browsers', async () => {
+    const response = await login('jane').expectStatus(200);
+    const setCookie = response.headers.get('set-cookie') ?? '';
+
+    expect(setCookie).toContain('asena_session=');
+    expect(setCookie).toContain('HttpOnly');
+
+    const cookie = setCookie.split(';')[0]!;
+
+    await app.get('/auth/me', { headers: { cookie } }).expectStatus(200);
+  });
+
+  test('a cookie sent cross-site on a state-changing request does not count (CSRF check)', async () => {
+    const cookie = ((await login('jane')).headers.get('set-cookie') ?? '').split(';')[0]!;
+    const crossSite = { cookie, origin: 'https://evil.example', 'content-type': 'application/json' };
+
+    await app.post('/todos', { headers: crossSite, body: JSON.stringify({ title: 'csrf' }) }).expectStatus(401);
+
+    // an origin listed in ALLOWED_ORIGINS keeps the cookie
+    await app
+      .post('/todos', {
+        headers: { ...crossSite, origin: 'http://localhost:5173' },
+        body: JSON.stringify({ title: 'from the SPA' }),
+      })
+      .expectStatus(201);
+  });
+
+  test('lists the active sessions and flags the current one', async () => {
+    const response = await app.get('/auth/sessions', authHeaders()).expectStatus(200);
+    const list = response.json<{ sessions: SessionInfo[] }>().sessions;
+
+    expect(list.length).toBeGreaterThanOrEqual(3); // three logins as jane so far
+    expect(list.filter((session) => session.current)).toHaveLength(1);
+  });
+
+  test('revokes one of the own sessions — that token is a 401 on its next request', async () => {
+    const other = (await login('jane')).json<{ token: string }>().token;
+    const list = (await app.get('/auth/sessions', bearer(other)).expectStatus(200)).json<{
+      sessions: SessionInfo[];
+    }>().sessions;
+    const otherId = list.find((session) => session.current)!.id;
+
+    await app.delete(`/auth/sessions/${otherId}`, authHeaders()).expectStatus(200);
+
+    await app.get('/auth/me', bearer(other)).expectStatus(401);
+    await app.get('/auth/me', authHeaders()).expectStatus(200);
+  });
+
+  test('cannot revoke another user session (404, nothing revoked)', async () => {
+    const list = (await app.get('/auth/sessions', authHeaders()).expectStatus(200)).json<{
+      sessions: SessionInfo[];
+    }>().sessions;
+    const janeSessionId = list.find((session) => session.current)!.id;
+
+    await app.delete(`/auth/sessions/${janeSessionId}`, bearer(bobToken)).expectStatus(404);
+    await app.get('/auth/me', authHeaders()).expectStatus(200);
+  });
+
+  test('logout ends the current session only', async () => {
+    const second = (await login('jane')).json<{ token: string }>().token;
+
+    await app.post('/auth/logout', bearer(second)).expectStatus(200);
+
+    await app.get('/auth/me', bearer(second)).expectStatus(401);
+    await app.get('/auth/me', authHeaders()).expectStatus(200);
+  });
+
+  test('logout-all signs the user out on every device', async () => {
+    await app.post('/auth/logout-all', authHeaders()).expectStatus(200);
+
+    await app.get('/auth/me', authHeaders()).expectStatus(401);
+    await app.get('/todos', authHeaders()).expectStatus(401);
+    // other users are untouched
+    await app.get('/auth/me', bearer(bobToken)).expectStatus(200);
+  });
+});
+
+describe('Admin & roles (end to end)', () => {
+  const login = (userName: string) =>
+    app.post('/auth/login', json({ userName, password: 'supersecret' })).expectStatus(200);
+  const bearer = (value: string, body?: unknown) => ({
+    headers: { authorization: `Bearer ${value}`, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const userId = (userName: string) => userRepository.users.find((user) => user.userName === userName)!.id;
+
+  let adminToken = '';
+
+  test('signup ignores a role sent by the client — every new user is a plain user', async () => {
+    const form = new FormData();
+    form.set('userName', 'mallory');
+    form.set('firstName', 'Mallory');
+    form.set('lastName', 'M');
+    form.set('age', '30');
+    form.set('password', 'supersecret');
+    form.set('role', 'admin');
+    form.set('file', new File([new Uint8Array([1])], 'avatar.png', { type: 'image/png' }));
+
+    const response = await fetch(`${app.baseUrl}/auth/signup`, { method: 'POST', body: form });
+
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { user: PublicUser }).user.role).toBe('user');
+  });
+
+  test('a plain user gets 403 on admin routes', async () => {
+    await app.get('/admin/users', bearer(bobToken)).expectStatus(403);
+  });
+
+  test('a promotion applies from the next login — sessions keep their snapshot roles', async () => {
+    const before = (await login('jane')).json<{ token: string }>().token;
+
+    // what `bun run user:admin jane` does in the database
+    userRepository.users.find((user) => user.userName === 'jane')!.role = 'admin';
+
+    await app.get('/admin/users', bearer(before)).expectStatus(403);
+
+    adminToken = (await login('jane')).json<{ token: string }>().token;
+
+    const users = (await app.get('/admin/users', bearer(adminToken)).expectStatus(200)).json<{
+      users: PublicUser[];
+    }>().users;
+
+    expect(users.map((user) => user.userName)).toContain('bob');
+    expect(users.some((user) => 'passwordHash' in user)).toBe(false);
+  });
+
+  test('an admin cannot change their own role (403)', async () => {
+    await app
+      .put(`/admin/users/${userId('jane')}/role`, bearer(adminToken, { role: 'user' }))
+      .expectStatus(403);
+  });
+
+  test('unknown users are a 404, unknown roles a 400', async () => {
+    await app.put('/admin/users/9999/role', bearer(adminToken, { role: 'admin' })).expectStatus(404);
+    await app
+      .put(`/admin/users/${userId('bob')}/role`, bearer(adminToken, { role: 'superuser' }))
+      .expectStatus(400);
+  });
+
+  test('changing a role ends every session of that user', async () => {
+    const response = await app
+      .put(`/admin/users/${userId('bob')}/role`, bearer(adminToken, { role: 'admin' }))
+      .expectStatus(200);
+
+    expect(response.json<{ user: PublicUser }>().user.role).toBe('admin');
+
+    // bob's session carried the old role — it is gone, not silently stale
+    await app.get('/auth/me', bearer(bobToken)).expectStatus(401);
+
+    const bobAdmin = (await login('bob')).json<{ token: string }>().token;
+    await app.get('/admin/users', bearer(bobAdmin)).expectStatus(200);
   });
 });

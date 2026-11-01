@@ -2,18 +2,20 @@ import { test, expect } from 'bun:test';
 import { createWebTest, silentLogger } from '@asenajs/asena/test';
 import { createHonoAdapter } from '@asenajs/hono-adapter';
 import { ChatController } from '../../src/controllers/ChatController';
+import { asJoe, testAuthComponents } from '../support/testAuth';
 
 /**
- * Web-slice tests for the protected /chat controller — the controller-level
- * AuthMiddleware, every validator and every route context contract run for real.
+ * Web-slice tests for the protected /chat controller — the asena-auth guard,
+ * every validator and every route context contract run for real; the session
+ * comes from the x-test-user header (see tests/support/testAuth.ts).
  */
 const authHeaders = {
-  headers: { authorization: 'Bearer valid-token', 'content-type': 'application/json' },
+  headers: { ...asJoe, 'content-type': 'application/json' },
 };
 
-test('GET /chat/rooms is rejected without a bearer token', async () => {
+test('GET /chat/rooms is rejected without a session', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
   await app.get('/chat/rooms').expectStatus(401);
 
@@ -22,9 +24,8 @@ test('GET /chat/rooms is rejected without a bearer token', async () => {
 
 test('GET /chat/rooms lists all rooms for an authenticated user', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
   mocks.ChatService.getRooms.mockResolvedValue([{ id: 1, name: 'General', createdBy: 7 }]);
 
   await app.get('/chat/rooms', authHeaders).expectStatus(200).expectJsonContains({
@@ -38,9 +39,8 @@ test('GET /chat/rooms lists all rooms for an authenticated user', async () => {
 
 test('POST /chat/rooms rejects a too-short name with 400', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
 
   await app
     .post('/chat/rooms', { ...authHeaders, body: JSON.stringify({ name: 'ab' }) })
@@ -53,9 +53,8 @@ test('POST /chat/rooms rejects a too-short name with 400', async () => {
 
 test('POST /chat/rooms passes the validated body to the service', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
   mocks.ChatService.createRoom.mockResolvedValue({ id: 1, name: 'General', createdBy: 7 });
 
   await app
@@ -70,9 +69,8 @@ test('POST /chat/rooms passes the validated body to the service', async () => {
 
 test('GET /chat/rooms/:id rejects a non-numeric id with 400', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
 
   await app.get('/chat/rooms/not-a-number', authHeaders).expectStatus(400);
 
@@ -83,9 +81,8 @@ test('GET /chat/rooms/:id rejects a non-numeric id with 400', async () => {
 
 test('POST /chat/rooms/:id/messages rejects empty content with 400', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
 
   await app
     .post('/chat/rooms/1/messages', { ...authHeaders, body: JSON.stringify({ content: '' }) })
@@ -98,9 +95,8 @@ test('POST /chat/rooms/:id/messages rejects empty content with 400', async () =>
 
 test('GET /chat/rooms/:id/messages coerces ?limit through the route contract', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
   mocks.ChatService.getMessages.mockResolvedValue([]);
 
   await app.get('/chat/rooms/4/messages?limit=20', authHeaders).expectStatus(200);
@@ -114,9 +110,8 @@ test('GET /chat/rooms/:id/messages coerces ?limit through the route contract', a
 
 test('GET /chat/rooms/:id/messages rejects a non-numeric ?limit with 400', async () => {
   const [adapter] = createHonoAdapter({ logger: silentLogger });
-  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController] });
+  const { app, mocks } = await createWebTest({ adapter, controllers: [ChatController], components: testAuthComponents });
 
-  mocks.AuthService.getUserFromToken.mockResolvedValue({ id: 7, userName: 'joe' });
 
   await app
     .get('/chat/rooms/4/messages?limit=abc', authHeaders)

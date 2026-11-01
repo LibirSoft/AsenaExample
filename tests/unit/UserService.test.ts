@@ -12,6 +12,7 @@ const storedUser: UserRow = {
   age: 30,
   passwordHash: 'argon2id$hash',
   profileImage: null,
+  role: 'user',
   createdAt: new Date('2026-01-01T00:00:00Z'),
 };
 
@@ -25,6 +26,11 @@ function createUserRepositoryDouble() {
     findByUserName: mock(async () => undefined as UserRow | undefined),
     existsBy: mock(async () => false),
     create: mock(async (_data: Omit<UserRow, 'id' | 'createdAt'>) => storedUser),
+    findAll: mock(async () => [storedUser]),
+    updateById: mock(async (_id: number, data: Partial<UserRow>): Promise<UserRow | undefined> => ({
+      ...storedUser,
+      ...data,
+    })),
   };
 }
 
@@ -75,7 +81,37 @@ describe('UserService', () => {
       lastName: 'Doe',
       age: 30,
       profileImage: null,
+      role: 'user',
       createdAt: storedUser.createdAt,
     });
+  });
+
+  test('listUsers never exposes password hashes', async () => {
+    const { instance } = mockComponent(UserService, {
+      overrides: { userRepository: createUserRepositoryDouble() },
+    });
+
+    const users = await instance.listUsers();
+
+    expect(users).toHaveLength(1);
+    expect('passwordHash' in users[0]!).toBe(false);
+  });
+
+  test('changeRole updates the role and answers 404 for an unknown user', async () => {
+    const userRepository = createUserRepositoryDouble();
+    const { instance } = mockComponent(UserService, { overrides: { userRepository } });
+
+    expect((await instance.changeRole(1, 'admin')).role).toBe('admin');
+    expect(userRepository.updateById).toHaveBeenCalledWith(1, { role: 'admin' });
+
+    userRepository.updateById.mockResolvedValueOnce(undefined);
+
+    try {
+      await instance.changeRole(99, 'admin');
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect(isHttpException(error as Error)).toBe(true);
+      expect((error as { status?: number }).status).toBe(404);
+    }
   });
 });
